@@ -51,6 +51,7 @@ void moon_phase_face_setup(uint8_t watch_face_index, void ** context_ptr) {
 
 void moon_phase_face_activate(void *context) {
     (void) context;
+    watch_set_indicator(WATCH_INDICATOR_SLEEP);
 }
 
 static void _update(moon_phase_state_t *state, uint32_t offset) {
@@ -210,4 +211,5 @@ bool moon_phase_face_loop(movement_event_t event, void *context) {
 void moon_phase_face_resign(void *context) {
     moon_phase_state_t *state = (moon_phase_state_t *)context;
     state->offset = 0;
+    watch_clear_indicator(WATCH_INDICATOR_SLEEP);
 }

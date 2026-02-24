@@ -84,6 +84,7 @@ INCLUDES += \
   -I./watch-faces/complication \
   -I./watch-faces/demo \
   -I./watch-faces/sensor \
+  -I./legacy/watch_faces/complication \
   -I./watch-faces/settings \
   -I./watch-faces/io \
 

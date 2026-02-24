@@ -1,8 +1,7 @@
 /*
  * MIT License
  *
- * Copyright (c) 2022 Josh Berson, building on Wesley Ellis’ countdown_face.c
- * Copyright (c) 2025 Joey Castillo
+ * Copyright (c) 2022 Andreas Nebinger
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,174 +24,465 @@
 
 #include <stdlib.h>
 #include <string.h>
+
 #include "alarm_face.h"
 #include "watch.h"
 #include "watch_utility.h"
+#include "watch_common_display.h"
+#include "delay.h"
 
-//
-// Private
-//
+typedef enum {
+    alarm_setting_idx_alarm,
+    alarm_setting_idx_day,
+    alarm_setting_idx_hour,
+    alarm_setting_idx_minute,
+    alarm_setting_idx_pitch,
+    alarm_setting_idx_beeps
+} alarm_setting_idx_t;
 
-static void _alarm_face_display_alarm_time(alarm_face_state_t *state) {
-    uint8_t hour = state->hour;
+static const char _dow_strings[ALARM_DAY_STATES + 1][2] = {"AL", "MO", "TU", "WE", "TH", "FR", "SA", "SO", "ED", "1t", "MF", "WN"};
+static const uint8_t _blink_idx[ALARM_SETTING_STATES] = {2, 0, 4, 6, 8, 9};
+static const uint8_t _blink_idx2[ALARM_SETTING_STATES] = {3, 1, 5, 7, 8, 9};
+static const watch_buzzer_note_t _buzzer_notes[3] = {BUZZER_NOTE_B6, BUZZER_NOTE_C8, BUZZER_NOTE_A8};
+static uint8_t _buzzer_segdata[3][2] = {{0, 3}, {1, 3}, {2, 2}};
 
-    if ( movement_clock_mode_24h() )
+static int8_t _wait_ticks;
+
+static uint8_t _get_weekday_idx(watch_date_time_t date_time) {
+    date_time.unit.year += 20;
+    if (date_time.unit.month <= 2) {
+        date_time.unit.month += 12;
+        date_time.unit.year--;
+    }
+    return (date_time.unit.day + 13 * (date_time.unit.month + 1) / 5 + date_time.unit.year + date_time.unit.year / 4 + 525 - 2) % 7;
+}
+
+static void _alarm_set_signal(alarm_state_t *state) {
+    if (state->alarm[state->alarm_idx].enabled)
+        watch_set_indicator(WATCH_INDICATOR_SIGNAL);
+    else
+        watch_clear_indicator(WATCH_INDICATOR_SIGNAL);
+}
+
+static void _alarm_face_draw(alarm_state_t *state, uint8_t subsecond) {
+    char buf[12];
+
+    uint8_t i = 0;
+    if (state->is_setting) {
+        // display the actual day indicating string for the current alarm
+        i = state->alarm[state->alarm_idx].day + 1;
+    }
+    // handle am/pm for hour display
+    bool set_leading_zero = false;
+    uint8_t h = state->alarm[state->alarm_idx].hour;
+    if (!movement_clock_mode_24h()) {
+        if (h >= 12) {
+            watch_set_indicator(WATCH_INDICATOR_PM);
+            h %= 12;
+        } else {
+            watch_clear_indicator(WATCH_INDICATOR_PM);
+        }
+        if (h == 0) h = 12;
+    } else {
         watch_set_indicator(WATCH_INDICATOR_24H);
-    else {
-        if ( hour >= 12 ) watch_set_indicator(WATCH_INDICATOR_PM);
-        else watch_clear_indicator(WATCH_INDICATOR_PM);
-        hour = hour % 12 ? hour % 12 : 12;
+        if (movement_clock_mode_24h() == MOVEMENT_CLOCK_MODE_024H) {
+            if (h < 10) {
+                set_leading_zero = true;
+            }
+        }
     }
 
-    static char lcdbuf[7];
-    sprintf(lcdbuf, "%2d%02d  ", hour, state->minute);
+    sprintf(buf, set_leading_zero ? "%c%c%2d%02d%02d  " : "%c%c%2d%2d%02d  ",
+        _dow_strings[i][0], _dow_strings[i][1],
+        (state->alarm_idx + 1),
+        h,
+        state->alarm[state->alarm_idx].minute);
+    // blink items if in settings mode
+    if (state->is_setting && subsecond % 2 && state->setting_state < alarm_setting_idx_pitch && !state->alarm_quick_ticks) {
+        buf[_blink_idx[state->setting_state]] = buf[_blink_idx2[state->setting_state]] = ' ';
+    }
+    watch_display_text(WATCH_POSITION_FULL, buf);
+    watch_display_character(' ', 10);  // clear stale 3rd top-row position on custom LCD
 
-    watch_display_text(WATCH_POSITION_BOTTOM, lcdbuf);
+    if (state->is_setting) {
+        // draw pitch level indicator
+        if ((subsecond % 2) == 0 || (state->setting_state != alarm_setting_idx_pitch)) {
+            if (state->alarm[state->alarm_idx].pitch == 3) {
+                // melody mode: show bell indicator and all 3 pitch pixels
+                watch_set_indicator(WATCH_INDICATOR_BELL);
+                for (i = 0; i < 3; i++)
+                    watch_set_pixel(_buzzer_segdata[i][0], _buzzer_segdata[i][1]);
+            } else {
+                watch_clear_indicator(WATCH_INDICATOR_BELL);
+                for (i = 0; i <= state->alarm[state->alarm_idx].pitch && i < 3; i++)
+                    watch_set_pixel(_buzzer_segdata[i][0], _buzzer_segdata[i][1]);
+            }
+        }
+        // draw beep rounds / melody indicator
+        if ((subsecond % 2) == 0 || (state->setting_state != alarm_setting_idx_beeps)) {
+            if (state->alarm[state->alarm_idx].pitch == 3) {
+                // melody mode: show melody abbreviation character
+                uint8_t melody_idx = state->alarm[state->alarm_idx].beeps;
+                if (melody_idx < MELODY_NUM_TUNES)
+                    watch_display_character(melody_tunes[melody_idx].short_char, _blink_idx[alarm_setting_idx_beeps]);
+                else
+                    watch_display_character('0', _blink_idx[alarm_setting_idx_beeps]);
+            } else if (state->alarm[state->alarm_idx].beeps == ALARM_MAX_BEEP_ROUNDS - 1)
+                watch_display_character('L', _blink_idx[alarm_setting_idx_beeps]);
+            else {
+                if (state->alarm[state->alarm_idx].beeps == 0)
+                    watch_display_character('o', _blink_idx[alarm_setting_idx_beeps]);
+                else
+                    watch_display_character(state->alarm[state->alarm_idx].beeps + 48, _blink_idx[alarm_setting_idx_beeps]);
+            }
+        }
+    }
+
+    // set alarm indicator
+    _alarm_set_signal(state);
+    // manage BELL indicator outside of settings mode (settings mode handles it via pitch indicator)
+    if (!state->is_setting) {
+        if (state->alarm[state->alarm_idx].pitch == 3)
+            watch_set_indicator(WATCH_INDICATOR_BELL);
+        else
+            watch_clear_indicator(WATCH_INDICATOR_BELL);
+    }
 }
 
-static inline void button_beep() {
-    // play a beep as confirmation for a button press (if applicable)
-    if (movement_button_should_sound()) watch_buzzer_play_note_with_volume(BUZZER_NOTE_C7, 50, movement_button_volume());
+static void _alarm_initiate_setting(alarm_state_t *state, uint8_t subsecond) {
+    state->is_setting = true;
+    state->setting_state = 0;
+    movement_request_tick_frequency(4);
+    _alarm_face_draw(state, subsecond);
 }
 
-//
-// Exported
-//
+static void _alarm_resume_setting(alarm_state_t *state, uint8_t subsecond) {
+    state->is_setting = false;
+    movement_request_tick_frequency(1);
+    _alarm_face_draw(state, subsecond);
+}
+
+static void _alarm_update_alarm_enabled(alarm_state_t *state) {
+    // save indication for active alarms to movement settings
+    bool active_alarms = false;
+    watch_date_time_t now;
+    bool now_init = false;
+    uint8_t weekday_idx;
+    uint16_t now_minutes_of_day;
+    uint16_t alarm_minutes_of_day;
+    for (uint8_t i = 0; i < ALARM_ALARMS; i++) {
+        if (state->alarm[i].enabled) {
+            if (state->alarm[i].day == ALARM_DAY_EACH_DAY || state->alarm[i].day == ALARM_DAY_ONE_TIME) {
+                active_alarms = true;
+                break;
+            } else {
+                if (!now_init) {
+                    now = watch_rtc_get_date_time();
+                    now_init = true;
+                    weekday_idx = _get_weekday_idx(now);
+                    now_minutes_of_day = now.unit.hour * 60 + now.unit.minute;
+                }
+                alarm_minutes_of_day = state->alarm[i].hour * 60 + state->alarm[i].minute;
+                if ((state->alarm[i].day == weekday_idx && alarm_minutes_of_day >= now_minutes_of_day)
+                    || ((weekday_idx + 1) % 7 == state->alarm[i].day && alarm_minutes_of_day <= now_minutes_of_day)
+                    || (state->alarm[i].day == ALARM_DAY_WORKDAY && (weekday_idx < 4
+                        || (weekday_idx == 4 && alarm_minutes_of_day >= now_minutes_of_day)
+                        || (weekday_idx == 6 && alarm_minutes_of_day <= now_minutes_of_day)))
+                    || (state->alarm[i].day == ALARM_DAY_WEEKEND && (weekday_idx == 5
+                        || (weekday_idx == 6 && alarm_minutes_of_day >= now_minutes_of_day)
+                        || (weekday_idx == 4 && alarm_minutes_of_day <= now_minutes_of_day)))) {
+                    active_alarms = true;
+                    break;
+                }
+            }
+        }
+    }
+    movement_set_alarm_enabled(active_alarms);
+}
+
+static void _alarm_play_short_beep(uint8_t pitch_idx) {
+    // play a short double beep
+    watch_buzzer_play_note(_buzzer_notes[pitch_idx], 50);
+    watch_buzzer_play_note(BUZZER_NOTE_REST, 50);
+    watch_buzzer_play_note(_buzzer_notes[pitch_idx], 70);
+}
+
+static void _alarm_indicate_beep(alarm_state_t *state) {
+    if (state->alarm[state->alarm_idx].pitch == 3) {
+        // melody mode: play a short preview of the selected melody
+        uint8_t melody_idx = state->alarm[state->alarm_idx].beeps;
+        if (melody_idx < MELODY_NUM_TUNES) {
+            watch_buzzer_play_sequence((int8_t *)melody_tunes[melody_idx].sequence, NULL);
+        }
+    } else if (state->alarm[state->alarm_idx].beeps == 0) {
+        // short double beep
+        _alarm_play_short_beep(state->alarm[state->alarm_idx].pitch);
+    } else {
+        // regular alarm beep
+        movement_play_alarm_beeps(1, _buzzer_notes[state->alarm[state->alarm_idx].pitch]);
+    }
+}
+
+static void _abort_quick_ticks(alarm_state_t *state) {
+    // abort counting quick ticks
+    if (state->alarm_quick_ticks) {
+        state->alarm[state->alarm_idx].enabled = true;
+        state->alarm_quick_ticks = false;
+        movement_request_tick_frequency(4);
+    }
+}
 
 void alarm_face_setup(uint8_t watch_face_index, void **context_ptr) {
     (void) watch_face_index;
 
     if (*context_ptr == NULL) {
-        *context_ptr = malloc(sizeof(alarm_face_state_t));
-        alarm_face_state_t *state = (alarm_face_state_t *)*context_ptr;
-        memset(*context_ptr, 0, sizeof(alarm_face_state_t));
+        *context_ptr = malloc(sizeof(alarm_state_t));
+        alarm_state_t *state = (alarm_state_t *)*context_ptr;
+        memset(*context_ptr, 0, sizeof(alarm_state_t));
+        // initialize the default alarm values
+        for (uint8_t i = 0; i < ALARM_ALARMS; i++) {
+            state->alarm[i].day = ALARM_DAY_EACH_DAY;
+            state->alarm[i].beeps = 5;
+            state->alarm[i].pitch = 1;
+        }
+        state->alarm_handled_minute = -1;
+        _wait_ticks = -1;
 
-        // default to an 8:00 AM alarm time.
-        state->hour = 8;
+        // Adjust pitch pixel coordinates for custom LCD
+        if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
+            _buzzer_segdata[0][0] = 1;
+            _buzzer_segdata[0][1] = 5;
+            _buzzer_segdata[1][0] = 2;
+            _buzzer_segdata[1][1] = 5;
+            _buzzer_segdata[2][0] = 3;
+            _buzzer_segdata[2][1] = 10;
+        }
     }
 }
 
 void alarm_face_activate(void *context) {
-    alarm_face_state_t *state = (alarm_face_state_t *)context;
-    state->setting_mode = ALARM_FACE_SETTING_MODE_NONE;
-}
-void alarm_face_resign(void *context) {
     (void) context;
+    watch_set_colon();
 }
 
-bool alarm_face_loop(movement_event_t event, void *context) {
-    alarm_face_state_t *state = (alarm_face_state_t *)context;
-
-    switch (event.event_type) {
-        case EVENT_ACTIVATE:
-            watch_display_text_with_fallback(WATCH_POSITION_TOP_LEFT, "ALM", "AL");
-            if (state->alarm_is_on) watch_set_indicator(WATCH_INDICATOR_SIGNAL);
-            watch_set_colon();
-            _alarm_face_display_alarm_time(state);
-            break;
-        case EVENT_TICK:
-            // No action needed for tick events in normal mode; we displayed our stuff in EVENT_ACTIVATE.
-            if (state->setting_mode == ALARM_FACE_SETTING_MODE_NONE)
-                break;
-
-            // but in settings mode, we need to blink up the parameter we're setting.
-            _alarm_face_display_alarm_time(state);
-            if (event.subsecond % 2 == 0) 
-                watch_display_text((state->setting_mode == ALARM_FACE_SETTING_MODE_SETTING_HOUR) ? WATCH_POSITION_HOURS : WATCH_POSITION_MINUTES, "  ");
-            break;
-        case EVENT_LIGHT_BUTTON_DOWN:
-            switch (state->setting_mode) {
-                case ALARM_FACE_SETTING_MODE_NONE:
-                    // If we're not in a setting mode, turn on the LED like normal.
-                    movement_illuminate_led();
-                    break;
-                case ALARM_FACE_SETTING_MODE_SETTING_HOUR:
-                    // If we're setting the hour, advance to minute set mode.
-                    state->setting_mode = ALARM_FACE_SETTING_MODE_SETTING_MINUTE;
-                    break;
-                case ALARM_FACE_SETTING_MODE_SETTING_MINUTE:
-                    // If we're setting the minute, advance back to normal mode and cancel fast tick.
-                    state->setting_mode = ALARM_FACE_SETTING_MODE_NONE;
-                    movement_request_tick_frequency(1);
-                    // beep to confirm setting.
-                    button_beep();
-                    // also turn the alarm on since they just set it.
-                    state->alarm_is_on = 1;
-                    movement_set_alarm_enabled(true);
-                    watch_set_indicator(WATCH_INDICATOR_SIGNAL);
-                    _alarm_face_display_alarm_time(state);
-                    break;
-            }
-            break;
-        case EVENT_ALARM_BUTTON_UP:
-            if (state->setting_mode == ALARM_FACE_SETTING_MODE_NONE) {
-                // in normal mode, toggle alarm on/off.
-                state->alarm_is_on ^= 1;
-                if ( state->alarm_is_on ) {
-                    watch_set_indicator(WATCH_INDICATOR_SIGNAL);
-                    movement_set_alarm_enabled(true);
-                } else {
-                    watch_clear_indicator(WATCH_INDICATOR_SIGNAL);
-                    movement_set_alarm_enabled(false);
-                }
-            }
-            break;
-        case EVENT_ALARM_BUTTON_DOWN:
-            switch (state->setting_mode) {
-                case ALARM_FACE_SETTING_MODE_NONE:
-                    // nothing to do here, alarm toggle is handled in EVENT_ALARM_BUTTON_UP.
-                    break;
-                case ALARM_FACE_SETTING_MODE_SETTING_HOUR:
-                    // increment hour, wrap around to 0 at 23.
-                    state->hour = (state->hour + 1) % 24;
-                    break;
-                case ALARM_FACE_SETTING_MODE_SETTING_MINUTE:
-                    // increment minute, wrap around to 0 at 59.
-                    state->minute = (state->minute + 1) % 60;
-                    break;
-            }
-            _alarm_face_display_alarm_time(state);
-            break;
-        case EVENT_ALARM_LONG_PRESS:
-            if (state->setting_mode == ALARM_FACE_SETTING_MODE_NONE) {
-                // long press in normal mode: move to hour setting mode, request fast tick.
-                state->setting_mode = ALARM_FACE_SETTING_MODE_SETTING_HOUR;
-                movement_request_tick_frequency(4);
-                button_beep();
-            }
-            break;
-        case EVENT_BACKGROUND_TASK:
-            movement_play_alarm();
-                // 2022-07-23: Thx @joeycastillo for the dedicated “alarm” signal
-            break;
-        case EVENT_TIMEOUT:
-            movement_move_to_face(0);
-            break;
-        case EVENT_LOW_ENERGY_UPDATE:
-            break;
-        default:
-            movement_default_loop_handler(event);
-            break;
-    }
-
-    return true;
+void alarm_face_resign(void *context) {
+    alarm_state_t *state = (alarm_state_t *)context;
+    state->is_setting = false;
+    _alarm_update_alarm_enabled(state);
+    watch_set_led_off();
+    watch_clear_indicator(WATCH_INDICATOR_BELL);
+    state->alarm_quick_ticks = false;
+    _wait_ticks = -1;
+    movement_request_tick_frequency(1);
 }
 
 movement_watch_face_advisory_t alarm_face_advise(void *context) {
-    alarm_face_state_t *state = (alarm_face_state_t *)context;
+    alarm_state_t *state = (alarm_state_t *)context;
     movement_watch_face_advisory_t retval = { 0 };
 
-    if ( state->alarm_is_on ) {
-        watch_date_time_t now = movement_get_local_date_time();
-        retval.wants_background_task = (state->hour==now.unit.hour && state->minute==now.unit.minute);
-        // We’re at the mercy of the advise handler
-        // In Safari, the emulator triggers at the ›end‹ of the minute
-        // Converting to Unix timestamps and taking a difference between now and wake
-        // is not an easy win — because the timestamp for wake has to rely on now
-        // for its date. So first we’d have to see if the TOD of wake is after that
-        // of now. If it is, take tomorrow’s date, calculating month and year rollover
-        // if need be.
+    watch_date_time_t now = movement_get_local_date_time();
+    // just a failsafe: never fire more than one alarm within a minute
+    if (state->alarm_handled_minute == now.unit.minute) return retval;
+    state->alarm_handled_minute = now.unit.minute;
+    // check the rest
+    for (uint8_t i = 0; i < ALARM_ALARMS; i++) {
+        if (state->alarm[i].enabled) {
+            if (state->alarm[i].minute == now.unit.minute) {
+                if (state->alarm[i].hour == now.unit.hour) {
+                    state->alarm_playing_idx = i;
+                    if (state->alarm[i].day == ALARM_DAY_EACH_DAY || state->alarm[i].day == ALARM_DAY_ONE_TIME) {
+                        retval.wants_background_task = true;
+                        return retval;
+                    }
+                    uint8_t weekday_idx = _get_weekday_idx(now);
+                    if (state->alarm[i].day == weekday_idx) { retval.wants_background_task = true; return retval; }
+                    if (state->alarm[i].day == ALARM_DAY_WORKDAY && weekday_idx < 5) { retval.wants_background_task = true; return retval; }
+                    if (state->alarm[i].day == ALARM_DAY_WEEKEND && weekday_idx >= 5) { retval.wants_background_task = true; return retval; }
+                }
+            }
+        }
+    }
+    state->alarm_handled_minute = -1;
+    // update the movement's alarm indicator five times an hour
+    if (now.unit.minute % 12 == 0) _alarm_update_alarm_enabled(state);
+    return retval;
+}
+
+bool alarm_face_loop(movement_event_t event, void *context) {
+    alarm_state_t *state = (alarm_state_t *)context;
+
+    switch (event.event_type) {
+    case EVENT_TICK:
+        if (state->alarm_quick_ticks) {
+            // we are in fast cycling mode
+            if (state->setting_state == alarm_setting_idx_hour) {
+                state->alarm[state->alarm_idx].hour = (state->alarm[state->alarm_idx].hour + 1) % 24;
+            } else if (state->setting_state == alarm_setting_idx_minute) {
+                state->alarm[state->alarm_idx].minute = (state->alarm[state->alarm_idx].minute + 1) % 60;
+            } else _abort_quick_ticks(state);
+        } else if (!state->is_setting) {
+            if (_wait_ticks >= 0) _wait_ticks++;
+            if (_wait_ticks == 2) {
+                // extra long press of alarm button
+                _wait_ticks = -1;
+                if (state->alarm_idx) {
+                    // revert change of enabled flag and show it briefly
+                    state->alarm[state->alarm_idx].enabled ^= 1;
+                    _alarm_set_signal(state);
+                    delay_ms(275);
+                    state->alarm_idx = 0;
+                }
+            } else break; // no need to do anything when we are not in settings mode and no quick ticks are running
+        }
+        // fall through
+    case EVENT_ACTIVATE:
+        _alarm_face_draw(state, event.subsecond);
+        break;
+    case EVENT_LIGHT_BUTTON_UP:
+        if (!state->is_setting) {
+            movement_illuminate_led();
+            _alarm_initiate_setting(state, event.subsecond);
+            break;
+        }
+        state->setting_state += 1;
+        if (state->setting_state >= ALARM_SETTING_STATES) {
+            // we have done a full settings cycle, so resume to normal
+            _alarm_resume_setting(state, event.subsecond);
+        }
+        break;
+    case EVENT_LIGHT_LONG_PRESS:
+        if (state->is_setting) {
+            _alarm_resume_setting(state, event.subsecond);
+        } else {
+            _alarm_initiate_setting(state, event.subsecond);
+        }
+        break;
+    case EVENT_ALARM_BUTTON_UP:
+        if (!state->is_setting) {
+            // stop wait ticks counter
+            _wait_ticks = -1;
+            // cycle through the alarms
+            state->alarm_idx = (state->alarm_idx + 1) % (ALARM_ALARMS);
+        } else {
+            // handle the settings behaviour
+            switch (state->setting_state) {
+            case alarm_setting_idx_alarm:
+                // alarm selection
+                state->alarm_idx = (state->alarm_idx + 1) % (ALARM_ALARMS);
+                break;
+            case alarm_setting_idx_day:
+                // day selection
+                state->alarm[state->alarm_idx].day = (state->alarm[state->alarm_idx].day + 1) % (ALARM_DAY_STATES);
+                break;
+            case alarm_setting_idx_hour:
+                // hour selection
+                _abort_quick_ticks(state);
+                state->alarm[state->alarm_idx].hour = (state->alarm[state->alarm_idx].hour + 1) % 24;
+                break;
+            case alarm_setting_idx_minute:
+                // minute selection
+                _abort_quick_ticks(state);
+                state->alarm[state->alarm_idx].minute = (state->alarm[state->alarm_idx].minute + 1) % 60;
+                break;
+            case alarm_setting_idx_pitch:
+                // pitch level: 0-2 = beep pitches, 3 = melody mode
+                state->alarm[state->alarm_idx].pitch = (state->alarm[state->alarm_idx].pitch + 1) % 4;
+                if (state->alarm[state->alarm_idx].pitch == 3) {
+                    // entering melody mode: clamp beeps to valid melody index
+                    if (state->alarm[state->alarm_idx].beeps >= MELODY_NUM_TUNES)
+                        state->alarm[state->alarm_idx].beeps = 0;
+                }
+                // play sound to show user what this is for
+                _alarm_indicate_beep(state);
+                break;
+            case alarm_setting_idx_beeps:
+                if (state->alarm[state->alarm_idx].pitch == 3) {
+                    // melody mode: cycle through available melodies
+                    state->alarm[state->alarm_idx].beeps = (state->alarm[state->alarm_idx].beeps + 1) % MELODY_NUM_TUNES;
+                    _alarm_indicate_beep(state);
+                } else {
+                    // number of beeping rounds selection
+                    state->alarm[state->alarm_idx].beeps = (state->alarm[state->alarm_idx].beeps + 1) % ALARM_MAX_BEEP_ROUNDS;
+                    // play sounds when user reaches 'short' length and also one time on regular beep length
+                    if (state->alarm[state->alarm_idx].beeps <= 1) _alarm_indicate_beep(state);
+                }
+                break;
+            default:
+                break;
+            }
+            // auto enable an alarm if user sets anything
+            if (state->setting_state > alarm_setting_idx_alarm) state->alarm[state->alarm_idx].enabled = true;
+        }
+        _alarm_face_draw(state, event.subsecond);
+        break;
+    case EVENT_ALARM_LONG_PRESS:
+        if (!state->is_setting) {
+            // toggle the enabled flag for current alarm
+            state->alarm[state->alarm_idx].enabled ^= 1;
+            // start wait ticks counter
+            _wait_ticks = 0;
+        } else {
+            // handle the long press settings behaviour
+            switch (state->setting_state) {
+            case alarm_setting_idx_alarm:
+                // alarm selection
+                state->alarm_idx = 0;
+                break;
+            case alarm_setting_idx_minute:
+            case alarm_setting_idx_hour:
+                // initiate fast cycling for hour or minute settings
+                movement_request_tick_frequency(8);
+                state->alarm_quick_ticks = true;
+                break;
+            default:
+                break;
+            }
+        }
+        _alarm_face_draw(state, event.subsecond);
+        break;
+    case EVENT_ALARM_LONG_UP:
+        if (state->is_setting) {
+            if (state->setting_state == alarm_setting_idx_hour || state->setting_state == alarm_setting_idx_minute)
+                _abort_quick_ticks(state);
+        } else _wait_ticks = -1;
+        break;
+    case EVENT_BACKGROUND_TASK:
+        // play alarm
+        if (state->alarm[state->alarm_playing_idx].pitch == 3) {
+            // melody mode: play the selected melody
+            uint8_t melody_idx = state->alarm[state->alarm_playing_idx].beeps;
+            if (melody_idx < MELODY_NUM_TUNES) {
+                watch_buzzer_play_sequence((int8_t *)melody_tunes[melody_idx].sequence, NULL);
+            }
+        } else if (state->alarm[state->alarm_playing_idx].beeps == 0) {
+            // short beep
+            _alarm_play_short_beep(state->alarm[state->alarm_playing_idx].pitch);
+        } else {
+            // regular alarm beeps
+            movement_play_alarm_beeps(
+                (state->alarm[state->alarm_playing_idx].beeps == (ALARM_MAX_BEEP_ROUNDS - 1) ? 20 : state->alarm[state->alarm_playing_idx].beeps),
+                _buzzer_notes[state->alarm[state->alarm_playing_idx].pitch]);
+        }
+        // one time alarm? -> erase it
+        if (state->alarm[state->alarm_playing_idx].day == ALARM_DAY_ONE_TIME) {
+            state->alarm[state->alarm_playing_idx].day = ALARM_DAY_EACH_DAY;
+            state->alarm[state->alarm_playing_idx].minute = state->alarm[state->alarm_playing_idx].hour = 0;
+            state->alarm[state->alarm_playing_idx].beeps = 5;
+            state->alarm[state->alarm_playing_idx].pitch = 1;
+            state->alarm[state->alarm_playing_idx].enabled = false;
+            _alarm_update_alarm_enabled(state);
+        }
+        break;
+    case EVENT_TIMEOUT:
+        movement_move_to_face(0);
+        break;
+    case EVENT_LIGHT_BUTTON_DOWN:
+        // don't light up every time light is hit
+        break;
+    default:
+        movement_default_loop_handler(event);
+        break;
     }
 
-    return retval;
+    return true;
 }

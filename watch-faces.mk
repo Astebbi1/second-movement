@@ -1,12 +1,23 @@
 SRCS += \
   ./watch-faces/clock/clock_face.c \
+  ./watch-faces/clock/day_night_percentage_face.c \
+  ./watch-faces/clock/wyoscan_face.c \
   ./watch-faces/clock/beats_face.c \
   ./watch-faces/clock/world_clock_face.c \
   ./watch-faces/clock/mars_time_face.c \
   ./watch-faces/clock/ish_face.c \
   ./watch-faces/complication/alarm_face.c \
   ./watch-faces/complication/advanced_alarm_face.c \
+  ./watch-faces/complication/stebbs_face.c \
   ./watch-faces/complication/countdown_face.c \
+  ./watch-faces/complication/day_one_face.c \
+  ./watch-faces/complication/interval_chime_face.c \
+  ./watch-faces/complication/stock_stopwatch_face.c \
+  ./watch-faces/complication/toss_up_face.c \
+  ./watch-faces/complication/tap_tempo_face.c \
+  ./watch-faces/complication/melody_face.c \
+  ./watch-faces/complication/melody_library.c \
+  ./watch-faces/complication/butterfly_game_face.c \
   ./watch-faces/complication/stopwatch_face.c \
   ./watch-faces/complication/fast_stopwatch_face.c \
   ./watch-faces/complication/sunrise_sunset_face.c \
@@ -44,9 +55,10 @@ SRCS += \
   ./watch-faces/complication/counter_face.c \
   ./watch-faces/complication/pulsometer_face.c \
   ./watch-faces/complication/interval_face.c \
-  ./watch-faces/complication/timer_face.c \
   ./watch-faces/complication/simple_coin_flip_face.c \
   ./watch-faces/sensor/lis2dw_monitor_face.c \
+  ./watch-faces/sensor/bubble_level_face.c \
+  ./legacy/watch_faces/complication/blinky_face.c \
   ./watch-faces/complication/wareki_face.c \
   ./watch-faces/complication/deadline_face.c \
   ./watch-faces/complication/blackjack_face.c \

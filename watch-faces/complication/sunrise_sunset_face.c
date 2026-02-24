@@ -478,8 +478,16 @@ void sunrise_sunset_face_activate(void *context) {
 
     sunrise_sunset_state_t *state = (sunrise_sunset_state_t *)context;
     movement_location_t movement_location = load_location_from_filesystem();
+    if (movement_location.reg == 0) {
+        // Default to Philadelphia, PA: 39.95°N, 75.17°W
+        movement_location.bit.latitude = 3995;
+        movement_location.bit.longitude = -7517;
+        persist_location_to_filesystem(movement_location);
+        watch_store_backup_data(movement_location.reg, 1);
+    }
     state->working_latitude = _sunrise_sunset_face_struct_from_latlon(movement_location.bit.latitude);
     state->working_longitude = _sunrise_sunset_face_struct_from_latlon(movement_location.bit.longitude);
+    watch_set_indicator(WATCH_INDICATOR_SIGNAL);
 }
 
 bool sunrise_sunset_face_loop(movement_event_t event, void *context) {
@@ -596,4 +604,5 @@ void sunrise_sunset_face_resign(void *context) {
     state->active_digit = 0;
     state->rise_index = 0;
     _sunrise_sunset_face_update_location_register(state);
+    watch_clear_indicator(WATCH_INDICATOR_SIGNAL);
 }

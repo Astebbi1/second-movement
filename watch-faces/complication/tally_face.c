@@ -133,16 +133,16 @@ bool tally_face_loop(movement_event_t event, void *context) {
                 bool light_pressed = HAL_GPIO_BTN_LIGHT_read();
                 bool alarm_pressed = HAL_GPIO_BTN_ALARM_read();
                 if (light_pressed && alarm_pressed) stop_quick_cyc();
-                else if (light_pressed) tally_face_increment(state, movement_button_should_sound());
-                else if (alarm_pressed) tally_face_decrement(state, movement_button_should_sound());
+                else if (light_pressed) tally_face_decrement(state, movement_button_should_sound());
+                else if (alarm_pressed) tally_face_increment(state, movement_button_should_sound());
                 else stop_quick_cyc();
             }
             break;
         case EVENT_ALARM_BUTTON_UP:
-            tally_face_decrement(state, movement_button_should_sound());
+            tally_face_increment(state, movement_button_should_sound());
             break;
         case EVENT_ALARM_LONG_PRESS:
-            tally_face_decrement(state, movement_button_should_sound());
+            tally_face_increment(state, movement_button_should_sound());
             start_quick_cyc();
             break;
         case EVENT_MODE_LONG_PRESS:
@@ -163,7 +163,7 @@ bool tally_face_loop(movement_event_t event, void *context) {
             }
             break;
         case EVENT_LIGHT_BUTTON_UP:
-            tally_face_increment(state, movement_button_should_sound());
+            tally_face_decrement(state, movement_button_should_sound());
             break;
         case EVENT_LIGHT_BUTTON_DOWN:
         case EVENT_ALARM_BUTTON_DOWN:
@@ -184,7 +184,7 @@ bool tally_face_loop(movement_event_t event, void *context) {
                 print_tally(state, movement_button_should_sound());
             }
             else{
-                tally_face_increment(state, movement_button_should_sound());
+                tally_face_decrement(state, movement_button_should_sound());
                 start_quick_cyc();
             }
             break;
