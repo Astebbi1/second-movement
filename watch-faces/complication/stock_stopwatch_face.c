@@ -43,9 +43,9 @@
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #else
-#include "../../../watch-library/hardware/include/saml22j18a.h"
-#include "../../../watch-library/hardware/include/component/tc.h"
-#include "../../../watch-library/hardware/hri/hri_tc_l22.h"
+#include "saml22j18a.h"
+#include "component/tc.h"
+#include "hri_shim.h"
 #endif
 
 // distant future for background task: January 1, 2083
@@ -53,14 +53,14 @@ static const watch_date_time_t distant_future = {
     .unit = {0, 0, 0, 1, 1, 63}
 };
 
-static uint32_t _ticks;
+static volatile uint32_t _ticks;
 static uint32_t _lap_ticks;
 static uint8_t _blink_ticks;
 static uint32_t _old_seconds;
 static uint8_t _old_minutes;
 static uint8_t _hours;
 static bool _colon;
-static bool _is_running;
+static volatile bool _is_running;
 
 #if __EMSCRIPTEN__
 
@@ -90,19 +90,22 @@ static inline void _cb_start() {
 static inline void _cb_start() {
     // start the TC2 timer
     hri_tc_set_CTRLA_ENABLE_bit(TC2);
+    hri_tc_wait_for_sync(TC2, TC_SYNCBUSY_ENABLE);
     _is_running = true;
 }
 
 static inline void _cb_stop() {
     // stop the TC2 timer
     hri_tc_clear_CTRLA_ENABLE_bit(TC2);
+    hri_tc_wait_for_sync(TC2, TC_SYNCBUSY_ENABLE);
     _is_running = false;
 }
 
 static void _cb_initialize() {
-    // setup and initialize TC2 for a 64 Hz interrupt
+    // setup and initialize TC2 for a 128 Hz interrupt
+    // GCLK2 = OSCULP32K / 1 = 32768 Hz (matches expected clock for this prescaler/period config)
     hri_mclk_set_APBCMASK_TC2_bit(MCLK);
-    hri_gclk_write_PCHCTRL_reg(GCLK, TC2_GCLK_ID, GCLK_PCHCTRL_GEN_GCLK3 | GCLK_PCHCTRL_CHEN);
+    hri_gclk_write_PCHCTRL_reg(GCLK, TC2_GCLK_ID, GCLK_PCHCTRL_GEN_GCLK2 | GCLK_PCHCTRL_CHEN);
     _cb_stop();
     hri_tc_write_CTRLA_reg(TC2, TC_CTRLA_SWRST);
     hri_tc_wait_for_sync(TC2, TC_SYNCBUSY_SWRST);
@@ -117,8 +120,9 @@ static void _cb_initialize() {
 
 void TC2_Handler(void) {
     // interrupt handler for TC2 (globally!)
+    // Write 1 to clear OVF flag (write-only, not read-modify-write, to avoid clearing other flags)
+    TC2->COUNT8.INTFLAG.reg = TC_INTFLAG_OVF;
     _ticks++;
-    TC2->COUNT8.INTFLAG.reg |= TC_INTFLAG_OVF;
 }
 
 #endif

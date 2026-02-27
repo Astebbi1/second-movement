@@ -26,6 +26,7 @@
 #define MOVEMENT_CONFIG_H_
 
 #include "movement_faces.h"
+#include "zones.h"
 
 const watch_face_t watch_faces[] = {
     clock_face,
@@ -39,9 +40,9 @@ const watch_face_t watch_faces[] = {
     tally_face,
     toss_up_face,
     tap_tempo_face,
-    melody_face,
     wyoscan_face,
-    blinky_face,
+    // --- secondary faces (long-press Mode from face 0) ---
+    melody_face,
     bubble_level_face,
     butterfly_game_face,
     endless_runner_face,
@@ -58,6 +59,9 @@ const watch_face_t watch_faces[] = {
  * If you don't want any faces to be excluded, set this to 0 and a long Mode press will have no effect.
  */
 #define MOVEMENT_SECONDARY_FACE_INDEX (MOVEMENT_NUM_FACES - 6)
+
+/* Default timezone for first boot. UTZ_NEW_YORK = America/New_York (Eastern, includes DST) */
+#define MOVEMENT_DEFAULT_TIMEZONE UTZ_NEW_YORK
 
 /* Custom hourly chime tune. Check movement_custom_signal_tunes.h for options. */
 #define SIGNAL_TUNE_DEFAULT

@@ -65,6 +65,7 @@ endif
 INCLUDES += \
   -I./ \
   -I. \
+  -I./hri \
   -I./tinyusb/src \
   -I./littlefs \
   -I./utz \

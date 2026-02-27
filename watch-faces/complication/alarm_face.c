@@ -447,16 +447,17 @@ bool alarm_face_loop(movement_event_t event, void *context) {
         } else _wait_ticks = -1;
         break;
     case EVENT_BACKGROUND_TASK:
-        // play alarm
+        // play alarm - all paths must go through movement_play_sequence or movement_play_alarm_beeps
+        // so that sleep mode is handled correctly (exit_sleep_mode is set, TCC is active when playing)
         if (state->alarm[state->alarm_playing_idx].pitch == 3) {
-            // melody mode: play the selected melody
+            // melody mode: route through movement_play_sequence so sleep mode wakeup is handled
             uint8_t melody_idx = state->alarm[state->alarm_playing_idx].beeps;
             if (melody_idx < MELODY_NUM_TUNES) {
-                watch_buzzer_play_sequence((int8_t *)melody_tunes[melody_idx].sequence, NULL);
+                movement_play_sequence((int8_t *)melody_tunes[melody_idx].sequence, BUZZER_PRIORITY_ALARM);
             }
         } else if (state->alarm[state->alarm_playing_idx].beeps == 0) {
-            // short beep
-            _alarm_play_short_beep(state->alarm[state->alarm_playing_idx].pitch);
+            // short beep - route through movement_play_alarm_beeps for sleep-mode safety
+            movement_play_alarm_beeps(1, _buzzer_notes[state->alarm[state->alarm_playing_idx].pitch]);
         } else {
             // regular alarm beeps
             movement_play_alarm_beeps(

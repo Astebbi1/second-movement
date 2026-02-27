@@ -48,7 +48,6 @@
 #include "character_set_face.h"
 #include "accelerometer_status_face.h"
 #include "bubble_level_face.h"
-#include "blinky_face.h"
 #include "all_segments_face.h"
 #include "temperature_display_face.h"
 #include "temperature_logging_face.h"

@@ -29,6 +29,7 @@
 #include <time.h>
 #else
 #include "saml22j18a.h"
+#include "hri_shim.h"
 #endif
 
 static const char heads[] = { '8', 'h', '4', 'E', '(' };
@@ -255,10 +256,10 @@ uint32_t get_true_entropy(void) {
 
     while (!hri_trng_get_INTFLAG_reg(TRNG, TRNG_INTFLAG_DATARDY)); // Wait for TRNG data to be ready
 
+    uint32_t data = hri_trng_read_DATA_reg(TRNG); // Read before disabling clock
     watch_disable_TRNG();
-
     hri_mclk_clear_APBCMASK_TRNG_bit(MCLK);
-    return hri_trng_read_DATA_reg(TRNG); // Read a single 32-bit word from TRNG and return it
+    return data;
     #endif
 }
 
