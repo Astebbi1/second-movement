@@ -12,8 +12,8 @@ GOSSAMER_PATH=gossamer
 # Set this to the type of display in your watch: classic or custom. Commented out to force a choice when building.
 # DISPLAY=classic
 
-# Official ARM GNU Toolchain (includes newlib). Takes priority over Homebrew arm-none-eabi-gcc.
-export PATH := /Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin:$(PATH)
+# Official ARM GNU Toolchain (includes newlib). Use explicit path to avoid Homebrew arm-none-eabi-gcc.
+ARM_TOOLCHAIN = /Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin
 
 # End of user configurable options.
 
@@ -22,6 +22,14 @@ TINYUSB_CDC=1
 
 # Now we're all set to include gossamer's make rules.
 include $(GOSSAMER_PATH)/make.mk
+
+# Override compiler tools to use the official ARM toolchain (not Homebrew arm-none-eabi-gcc).
+# make.mk sets CC=arm-none-eabi-gcc; we replace it with the full path so cc1 is always found.
+ifndef EMSCRIPTEN
+override CC      := $(ARM_TOOLCHAIN)/arm-none-eabi-gcc
+override OBJCOPY := $(ARM_TOOLCHAIN)/arm-none-eabi-objcopy
+override SIZE    := $(ARM_TOOLCHAIN)/arm-none-eabi-size
+endif
 
 # Don't add gossamer's rtc.c since we are using our own rtc32.c
 SRCS := $(filter-out $(GOSSAMER_PATH)/peripherals/rtc.c,$(SRCS))

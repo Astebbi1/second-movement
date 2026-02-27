@@ -254,9 +254,10 @@ uint32_t get_true_entropy(void) {
     hri_mclk_set_APBCMASK_TRNG_bit(MCLK);
     hri_trng_set_CTRLA_ENABLE_bit(TRNG);
 
-    while (!hri_trng_get_INTFLAG_reg(TRNG, TRNG_INTFLAG_DATARDY)); // Wait for TRNG data to be ready
+    uint16_t timeout = 10000;
+    while (!hri_trng_get_INTFLAG_reg(TRNG, TRNG_INTFLAG_DATARDY) && timeout--);
 
-    uint32_t data = hri_trng_read_DATA_reg(TRNG); // Read before disabling clock
+    uint32_t data = timeout ? hri_trng_read_DATA_reg(TRNG) : rand();
     watch_disable_TRNG();
     hri_mclk_clear_APBCMASK_TRNG_bit(MCLK);
     return data;
