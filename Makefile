@@ -168,5 +168,10 @@ include watch-faces.mk
 SRCS += \
   ./movement.c \
 
+# When building the simulator, name outputs watch.* so they copy directly to the simulator repo.
+ifdef EMSCRIPTEN
+override BIN = watch
+endif
+
 # Finally, leave this line at the bottom of the file.
 include $(GOSSAMER_PATH)/rules.mk
