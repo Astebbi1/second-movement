@@ -12,6 +12,9 @@ GOSSAMER_PATH=gossamer
 # Set this to the type of display in your watch: classic or custom. Commented out to force a choice when building.
 # DISPLAY=classic
 
+# Official ARM GNU Toolchain (includes newlib). Takes priority over Homebrew arm-none-eabi-gcc.
+export PATH := /Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin:$(PATH)
+
 # End of user configurable options.
 
 # Support USB features?
