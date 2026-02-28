@@ -46,6 +46,7 @@ const watch_face_t watch_faces[] = {
     bubble_level_face,
     butterfly_game_face,
     endless_runner_face,
+    voltage_face,
     settings_face,
     set_time_face,
 };
