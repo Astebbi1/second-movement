@@ -35,7 +35,7 @@ const watch_face_t watch_faces[] = {
     sunrise_sunset_face,
     moon_phase_face,
     alarm_face,
-    stock_stopwatch_face,
+    fast_stopwatch_face,
     countdown_face,
     tally_face,
     toss_up_face,
