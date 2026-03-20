@@ -123,7 +123,7 @@ static void _alarm_face_draw(alarm_state_t *state, uint8_t subsecond) {
             if (state->alarm[state->alarm_idx].pitch == 3) {
                 // melody mode: show melody abbreviation character
                 uint8_t melody_idx = state->alarm[state->alarm_idx].beeps;
-                if (melody_idx < MELODY_NUM_TUNES)
+                if (melody_idx < ALARM_MELODY_NUM_TUNES)
                     watch_display_character(melody_tunes[melody_idx].short_char, _blink_idx[alarm_setting_idx_beeps]);
                 else
                     watch_display_character('0', _blink_idx[alarm_setting_idx_beeps]);
@@ -211,7 +211,7 @@ static void _alarm_indicate_beep(alarm_state_t *state) {
     if (state->alarm[state->alarm_idx].pitch == 3) {
         // melody mode: play a short preview of the selected melody
         uint8_t melody_idx = state->alarm[state->alarm_idx].beeps;
-        if (melody_idx < MELODY_NUM_TUNES) {
+        if (melody_idx < ALARM_MELODY_NUM_TUNES) {
             watch_buzzer_play_sequence((int8_t *)melody_tunes[melody_idx].sequence, NULL);
         }
     } else if (state->alarm[state->alarm_idx].beeps == 0) {
@@ -389,7 +389,7 @@ bool alarm_face_loop(movement_event_t event, void *context) {
                 state->alarm[state->alarm_idx].pitch = (state->alarm[state->alarm_idx].pitch + 1) % 4;
                 if (state->alarm[state->alarm_idx].pitch == 3) {
                     // entering melody mode: clamp beeps to valid melody index
-                    if (state->alarm[state->alarm_idx].beeps >= MELODY_NUM_TUNES)
+                    if (state->alarm[state->alarm_idx].beeps >= ALARM_MELODY_NUM_TUNES)
                         state->alarm[state->alarm_idx].beeps = 0;
                 }
                 // play sound to show user what this is for
@@ -398,7 +398,7 @@ bool alarm_face_loop(movement_event_t event, void *context) {
             case alarm_setting_idx_beeps:
                 if (state->alarm[state->alarm_idx].pitch == 3) {
                     // melody mode: cycle through available melodies
-                    state->alarm[state->alarm_idx].beeps = (state->alarm[state->alarm_idx].beeps + 1) % MELODY_NUM_TUNES;
+                    state->alarm[state->alarm_idx].beeps = (state->alarm[state->alarm_idx].beeps + 1) % ALARM_MELODY_NUM_TUNES;
                     _alarm_indicate_beep(state);
                 } else {
                     // number of beeping rounds selection
@@ -452,7 +452,7 @@ bool alarm_face_loop(movement_event_t event, void *context) {
         if (state->alarm[state->alarm_playing_idx].pitch == 3) {
             // melody mode: route through movement_play_sequence so sleep mode wakeup is handled
             uint8_t melody_idx = state->alarm[state->alarm_playing_idx].beeps;
-            if (melody_idx < MELODY_NUM_TUNES) {
+            if (melody_idx < ALARM_MELODY_NUM_TUNES) {
                 movement_play_sequence((int8_t *)melody_tunes[melody_idx].sequence, BUZZER_PRIORITY_ALARM);
             }
         } else if (state->alarm[state->alarm_playing_idx].beeps == 0) {

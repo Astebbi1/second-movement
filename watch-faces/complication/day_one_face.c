@@ -34,15 +34,34 @@ static uint32_t _day_one_face_juliandaynum(uint16_t year, uint16_t month, uint16
 }
 
 static void _day_one_face_update(day_one_state_t *state) {
-    char num_buf[7];
     watch_date_time_t date_time = watch_rtc_get_date_time();
     uint32_t julian_date = _day_one_face_juliandaynum(date_time.unit.year + WATCH_RTC_REFERENCE_YEAR, date_time.unit.month, date_time.unit.day);
     uint32_t julian_birthdate = _day_one_face_juliandaynum(state->birth_year, state->birth_month, state->birth_day);
     uint32_t days = (julian_date < julian_birthdate) ? (julian_birthdate - julian_date) : (julian_date - julian_birthdate);
+
     // "DAYno" fills the 5-char top on custom LCD; classic falls back to "DA"
     watch_display_text_with_fallback(WATCH_POSITION_TOP, "DAYno", "DA");
-    sprintf(num_buf, "%6u", (unsigned)days);
-    watch_display_text(WATCH_POSITION_BOTTOM, num_buf);
+
+    if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
+        // Custom LCD: far-left "1" pixel + 4 digits in hours+minutes (positions 4-7), seconds blank.
+        // Handles 0-19999 days (~54 years). For 13287: pixel-1 + "3287".
+        char num_buf[5];
+        if (days >= 10000) {
+            watch_set_pixel(0, 22);
+            snprintf(num_buf, sizeof(num_buf), "%4u", (unsigned)(days % 10000));
+        } else {
+            watch_clear_pixel(0, 22);
+            snprintf(num_buf, sizeof(num_buf), "%4u", (unsigned)days);
+        }
+        watch_display_text(WATCH_POSITION_HOURS,   num_buf);
+        watch_display_text(WATCH_POSITION_MINUTES, num_buf + 2);
+        watch_display_text(WATCH_POSITION_SECONDS, "  ");
+    } else {
+        // Classic LCD: 6-digit count in the full bottom row (positions 4-9)
+        char num_buf[7];
+        snprintf(num_buf, sizeof(num_buf), "%6u", (unsigned)days);
+        watch_display_text(WATCH_POSITION_BOTTOM, num_buf);
+    }
 }
 
 static void _day_one_face_abort_quick_cycle(day_one_state_t *state) {
@@ -128,21 +147,22 @@ bool day_one_face_loop(movement_event_t event, void *context) {
                     watch_display_text(WATCH_POSITION_FULL, "YR        ");
                     if (event.subsecond % 2) {
                         sprintf(buf, "%4d", state->birth_year);
-                        watch_display_string(buf, 4);
+                        watch_display_text(WATCH_POSITION_HOURS,   buf);
+                        watch_display_text(WATCH_POSITION_MINUTES, buf + 2);
                     }
                     break;
                 case DAY_ONE_PAGE_MONTH:
                     watch_display_text(WATCH_POSITION_FULL, "MO        ");
                     if (event.subsecond % 2) {
                         sprintf(buf, "%2d", state->birth_month);
-                        watch_display_string(buf, 4);
+                        watch_display_text(WATCH_POSITION_HOURS, buf);
                     }
                     break;
                 case DAY_ONE_PAGE_DAY:
                     watch_display_text(WATCH_POSITION_FULL, "DA        ");
                     if (event.subsecond % 2) {
                         sprintf(buf, "%2d", state->birth_day);
-                        watch_display_string(buf, 6);
+                        watch_display_text(WATCH_POSITION_MINUTES, buf);
                     }
                     break;
                 // otherwise, check if we have to update. the display only needs to change at midnight!
@@ -211,7 +231,10 @@ bool day_one_face_loop(movement_event_t event, void *context) {
                 case DAY_ONE_PAGE_DISPLAY:
                     state->current_page = DAY_ONE_PAGE_DATE;
                     sprintf(buf, "%04d%02d%02d", state->birth_year % 10000, state->birth_month % 100, state->birth_day % 100);
-                    watch_display_string(buf, 2);
+                    watch_display_text(WATCH_POSITION_TOP_RIGHT, buf);
+                    watch_display_text(WATCH_POSITION_HOURS,     buf + 2);
+                    watch_display_text(WATCH_POSITION_MINUTES,   buf + 4);
+                    watch_display_text(WATCH_POSITION_SECONDS,   buf + 6);
                     state->ticks = 2;
                     break;
                 default:

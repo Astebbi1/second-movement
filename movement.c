@@ -49,6 +49,7 @@
 #include "movement_config.h"
 
 #include "movement_custom_signal_tunes.h"
+#include "lib/embedded_pedometer/count_steps.h"
 
 #if __EMSCRIPTEN__
 #include <emscripten.h>
@@ -440,22 +441,48 @@ void movement_request_tick_frequency(uint8_t freq) {
 
 void movement_illuminate_led(void) {
     if (movement_state.settings.bit.led_duration != 0b111) {
+        if (movement_state.settings.bit.led_duration == 5) {
+            // Toggle mode: press turns on, press again turns off
+            if (movement_state.light_on) {
+                movement_force_led_off();
+            } else {
+                movement_state.light_on = true;
+                watch_set_led_color_rgb(movement_state.settings.bit.led_red_color | movement_state.settings.bit.led_red_color << 4,
+                                        movement_state.settings.bit.led_green_color | movement_state.settings.bit.led_green_color << 4,
+                                        movement_state.settings.bit.led_blue_color | movement_state.settings.bit.led_blue_color << 4);
+            }
+            return;
+        }
         movement_state.light_on = true;
-        watch_set_led_color_rgb(movement_state.settings.bit.led_red_color | movement_state.settings.bit.led_red_color << 4,
-                                movement_state.settings.bit.led_green_color | movement_state.settings.bit.led_green_color << 4,
-                                movement_state.settings.bit.led_blue_color | movement_state.settings.bit.led_blue_color << 4);
-        if (movement_state.settings.bit.led_duration == 0) {
-            // Do nothing it'll be turned off on button release
-        } else {
-            // Set a timeout to turn off the light
+        if (movement_state.settings.bit.led_duration == 4) {
+            // Rainbow mode: start at red and cycle every second for 5 seconds
+            movement_state.led_rainbow_step = 0;
+            watch_set_led_color_rgb(0xFF, 0, 0);
             rtc_counter_t counter = watch_rtc_get_counter();
             uint32_t freq = watch_rtc_get_frequency();
             watch_rtc_register_comp_callback_no_schedule(
                 cb_led_timeout_interrupt,
-                counter + (movement_state.settings.bit.led_duration * 2 - 1) * freq,
+                counter + 5 * freq,
                 LED_TIMEOUT
             );
             movement_volatile_state.schedule_next_comp = true;
+        } else {
+            watch_set_led_color_rgb(movement_state.settings.bit.led_red_color | movement_state.settings.bit.led_red_color << 4,
+                                    movement_state.settings.bit.led_green_color | movement_state.settings.bit.led_green_color << 4,
+                                    movement_state.settings.bit.led_blue_color | movement_state.settings.bit.led_blue_color << 4);
+            if (movement_state.settings.bit.led_duration == 0) {
+                // Do nothing it'll be turned off on button release
+            } else {
+                // Set a timeout to turn off the light
+                rtc_counter_t counter = watch_rtc_get_counter();
+                uint32_t freq = watch_rtc_get_frequency();
+                watch_rtc_register_comp_callback_no_schedule(
+                    cb_led_timeout_interrupt,
+                    counter + (movement_state.settings.bit.led_duration * 2 - 1) * freq,
+                    LED_TIMEOUT
+                );
+                movement_volatile_state.schedule_next_comp = true;
+            }
         }
     }
 }
@@ -490,6 +517,7 @@ bool movement_default_loop_handler(movement_event_t event) {
             if (movement_state.settings.bit.led_duration == 0) {
                 movement_force_led_off();
             }
+            // Toggle mode (5) stays on until next press — no action on release
             break;
         case EVENT_MODE_LONG_PRESS:
             if (MOVEMENT_SECONDARY_FACE_INDEX && movement_state.current_face_idx == 0) {
@@ -497,6 +525,19 @@ bool movement_default_loop_handler(movement_event_t event) {
             } else {
                 movement_move_to_face(0);
             }
+            break;
+        case EVENT_MODE_REALLY_LONG_PRESS:
+#ifdef MOVEMENT_TERTIARY_FACE_INDEX
+            if (MOVEMENT_TERTIARY_FACE_INDEX) {
+                if (movement_state.current_face_idx < (int16_t)MOVEMENT_TERTIARY_FACE_INDEX) {
+                    // From primary or secondary: jump to tertiary
+                    movement_move_to_face(MOVEMENT_TERTIARY_FACE_INDEX);
+                } else {
+                    // From tertiary: return to primary
+                    movement_move_to_face(0);
+                }
+            }
+#endif
             break;
         default:
             break;
@@ -511,13 +552,27 @@ void movement_move_to_face(uint8_t watch_face_index) {
 }
 
 void movement_move_to_next_face(void) {
-    uint16_t face_max;
-    if (MOVEMENT_SECONDARY_FACE_INDEX) {
-        face_max = (movement_state.current_face_idx < (int16_t)MOVEMENT_SECONDARY_FACE_INDEX) ? MOVEMENT_SECONDARY_FACE_INDEX : MOVEMENT_NUM_FACES;
-    } else {
+    int16_t face_min, face_max;
+#ifdef MOVEMENT_TERTIARY_FACE_INDEX
+    if (MOVEMENT_TERTIARY_FACE_INDEX && movement_state.current_face_idx >= (int16_t)MOVEMENT_TERTIARY_FACE_INDEX) {
+        face_min = MOVEMENT_TERTIARY_FACE_INDEX;
         face_max = MOVEMENT_NUM_FACES;
+    } else
+#endif
+    if (MOVEMENT_SECONDARY_FACE_INDEX && movement_state.current_face_idx >= (int16_t)MOVEMENT_SECONDARY_FACE_INDEX) {
+        face_min = MOVEMENT_SECONDARY_FACE_INDEX;
+#ifdef MOVEMENT_TERTIARY_FACE_INDEX
+        face_max = MOVEMENT_TERTIARY_FACE_INDEX ? MOVEMENT_TERTIARY_FACE_INDEX : MOVEMENT_NUM_FACES;
+#else
+        face_max = MOVEMENT_NUM_FACES;
+#endif
+    } else {
+        face_min = 0;
+        face_max = MOVEMENT_SECONDARY_FACE_INDEX ? MOVEMENT_SECONDARY_FACE_INDEX : MOVEMENT_NUM_FACES;
     }
-    movement_move_to_face((movement_state.current_face_idx + 1) % face_max);
+    int16_t next = movement_state.current_face_idx + 1;
+    if (next >= face_max) next = face_min;
+    movement_move_to_face((uint8_t)next);
 }
 
 void movement_schedule_background_task(watch_date_time_t date_time) {
@@ -581,7 +636,18 @@ void movement_play_note(watch_buzzer_note_t note, uint16_t duration_ms) {
 }
 
 void movement_play_signal(void) {
-    movement_play_sequence(signal_tune, BUZZER_PRIORITY_SIGNAL);
+    uint8_t idx = movement_state.signal_tune_index;
+    if (idx >= SIGNAL_NUM_TUNES) idx = 0;
+    movement_play_sequence((int8_t *)signal_tunes[idx].sequence, BUZZER_PRIORITY_SIGNAL);
+}
+
+uint8_t movement_get_signal_tune_index(void) {
+    return movement_state.signal_tune_index;
+}
+
+void movement_set_signal_tune_index(uint8_t index) {
+    if (index >= SIGNAL_NUM_TUNES) index = 0;
+    movement_state.signal_tune_index = index;
 }
 
 void movement_play_alarm(void) {
@@ -918,6 +984,125 @@ float movement_get_temperature(void) {
 
     return temperature_c;
 }
+
+// ============================================================
+// Step counter implementation
+// Uses LIS2DW FIFO at 12.5 Hz + Espruino pedometer algorithm.
+// ============================================================
+
+static uint32_t _total_step_count = 0;
+static uint8_t _step_fifo_timeout = LIS2DW_FIFO_TIMEOUT;
+
+bool movement_enable_step_count(bool force_enable) {
+    if (!movement_state.has_lis2dw) return false;
+    if (movement_state.counting_steps && !force_enable) return true;
+
+    // Configure LIS2DW for 12.5 Hz low-power FIFO mode
+    lis2dw_set_data_rate(LIS2DW_DATA_RATE_12_5_HZ);
+    lis2dw_set_mode(LIS2DW_MODE_LOW_POWER);
+    lis2dw_set_low_power_mode(LIS2DW_LP_MODE_1);
+    lis2dw_set_range(LIS2DW_RANGE_4_G);
+    lis2dw_enable_fifo();
+    lis2dw_set_low_noise_mode(true);
+
+    count_steps_espruino_init();
+    movement_state.counting_steps = true;
+    _total_step_count = 0;
+    _step_fifo_timeout = LIS2DW_FIFO_TIMEOUT;
+    return true;
+}
+
+bool movement_enable_step_count_multiple_attempts(uint8_t max_tries, bool force_enable) {
+    for (uint8_t i = 0; i < max_tries; i++) {
+        if (movement_enable_step_count(force_enable)) return true;
+        delay_ms(10);
+    }
+    return false;
+}
+
+bool movement_disable_step_count(bool disable_immediately) {
+    if (!movement_state.counting_steps) return true;
+    if (!disable_immediately && movement_state.count_steps_keep_on) return false;
+
+    lis2dw_disable_fifo();
+    // Return to background accelerometer rate
+    lis2dw_set_data_rate(movement_state.accelerometer_background_rate);
+    lis2dw_set_mode(LIS2DW_MODE_LOW_POWER);
+    lis2dw_set_low_noise_mode(false);
+    movement_state.counting_steps = false;
+    return true;
+}
+
+bool movement_step_count_is_enabled(void) {
+    return movement_state.counting_steps;
+}
+
+bool movement_step_count_keep_on(void) {
+    return movement_state.count_steps_keep_on;
+}
+
+bool movement_step_count_keep_off(void) {
+    return movement_state.count_steps_keep_off;
+}
+
+void movement_set_step_count_keep_on(bool keep_on) {
+    movement_state.count_steps_keep_on = keep_on;
+    if (!keep_on && !movement_state.count_steps_keep_off) {
+        // Allow natural disable next time
+    }
+}
+
+void movement_set_step_count_keep_off(bool keep_off) {
+    movement_state.count_steps_keep_off = keep_off;
+}
+
+uint32_t movement_get_step_count(void) {
+    return _total_step_count;
+}
+
+void movement_reset_step_count(void) {
+    _total_step_count = 0;
+    if (movement_state.counting_steps) {
+        count_steps_espruino_init();
+    }
+}
+
+// No-op: LIS2DUX12 not present on this board
+void movement_update_step_count_lis2dux(void) {
+    // no-op: LIS2DUX12 not present; LIS2DW FIFO is read in the main tick instead
+}
+
+bool movement_has_lis2dw(void) {
+    return movement_state.has_lis2dw;
+}
+
+// Always false: no LIS2DUX12 on this board
+bool movement_has_lis2dux(void) {
+    return false;
+}
+
+bool movement_step_counter_in_low_battery(void) {
+    // Always allow step counting; voltage check not implemented here
+    return false;
+}
+
+// Called once per second from the main loop to drain the LIS2DW FIFO and count steps.
+// Only runs when tick_frequency == 1 (i.e., not in a high-frequency face).
+static void _movement_count_new_steps_lis2dw(void) {
+    if (!movement_state.counting_steps) return;
+    if (movement_state.tick_frequency != 1) return;
+
+    lis2dw_fifo_t fifo_data;
+    if (lis2dw_read_fifo(&fifo_data, _step_fifo_timeout)) {
+#if COUNT_STEPS_USE_ESPRUINO
+        _total_step_count += count_steps_espruino(&fifo_data);
+#else
+        _total_step_count += count_steps_simple(&fifo_data);
+#endif
+    }
+}
+
+// ============================================================
 
 void app_init(void) {
     _watch_init();
@@ -1272,6 +1457,20 @@ bool app_loop(void) {
         && movement_state.has_scheduled_background_task
     ) {
         _movement_handle_scheduled_tasks();
+    }
+
+    // process LIS2DW FIFO for step counting once per second
+    if ((pending_events & (1 << EVENT_TICK)) && event.subsecond == 0) {
+        _movement_count_new_steps_lis2dw();
+        // rainbow mode: advance color once per second while LED is on
+        if (movement_state.light_on && movement_state.settings.bit.led_duration == 4) {
+            movement_state.led_rainbow_step++;
+            switch (movement_state.led_rainbow_step % 3) {
+                case 0: watch_set_led_color_rgb(0xFF, 0,    0   ); break; // red
+                case 1: watch_set_led_color_rgb(0,    0xFF, 0   ); break; // green
+                case 2: watch_set_led_color_rgb(0,    0,    0xFF); break; // blue
+            }
+        }
     }
 
     // Pop the EVENT_TIMEOUT out of the pending_events so it can be handled separately

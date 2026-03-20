@@ -29,43 +29,46 @@
 #include "zones.h"
 
 const watch_face_t watch_faces[] = {
+    // --- primary faces (indices 0-9) ---
     clock_face,
     stebbs_face,
     day_one_face,
+    step_counter_face,
+    awake_face,
     sunrise_sunset_face,
     moon_phase_face,
     alarm_face,
-    fast_stopwatch_face,
     countdown_face,
-    tally_face,
-    toss_up_face,
-    tap_tempo_face,
     wyoscan_face,
-    // --- secondary faces (long-press Mode from face 0) ---
+    // --- secondary faces / tools (indices 10-17, long-press Mode from face 0) ---
+    nxtup_face,
     melody_face,
     bubble_level_face,
-    butterfly_game_face,
-    endless_runner_face,
+    temperature_display_face,
     voltage_face,
+    chime_face,
     settings_face,
     set_time_face,
+    // --- tertiary faces / games (indices 16-21, really-long-press Mode from face 0) ---
+    tap_tempo_face,
+    tally_face,
+    fast_stopwatch_face,
+    toss_up_face,
+    butterfly_game_face,
+    endless_runner_face,
 };
 
 #define MOVEMENT_NUM_FACES (sizeof(watch_faces) / sizeof(watch_face_t))
 
-/* Determines what face to go to from the first face on long press of the Mode button.
- * Also excludes these faces from the normal rotation.
- * In the default firmware, this lets you access temperature and battery voltage with a long press of Mode.
- * Some folks also like to use this to hide the preferences and time set faces from the normal rotation.
- * If you don't want any faces to be excluded, set this to 0 and a long Mode press will have no effect.
- */
-#define MOVEMENT_SECONDARY_FACE_INDEX (MOVEMENT_NUM_FACES - 7)
+/* Index of the first secondary (tools) face. Long-press Mode jumps here from face 0. */
+#define MOVEMENT_SECONDARY_FACE_INDEX 10
+
+/* Index of the first tertiary (games) face. Really-long-press Mode jumps here from face 0. */
+#define MOVEMENT_TERTIARY_FACE_INDEX 18
 
 /* Default timezone for first boot. UTZ_NEW_YORK = America/New_York (Eastern, includes DST) */
 #define MOVEMENT_DEFAULT_TIMEZONE UTZ_NEW_YORK
 
-/* Custom hourly chime tune. Check movement_custom_signal_tunes.h for options. */
-#define SIGNAL_TUNE_DEFAULT
 
 /* Determines the intensity of the led colors
  * Set a hex value 0-15 with 0x0 being off and 0xF being max intensity

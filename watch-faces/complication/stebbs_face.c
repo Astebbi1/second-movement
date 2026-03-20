@@ -31,10 +31,19 @@
 // 8 ticks per second; scroll advances every 2 ticks → 4 chars/sec
 #define TICK_FREQUENCY     8
 #define SCROLL_DIVISOR     2
+// Flop advances every 2 ticks → 4 steps/sec, 8-frame cycle = 2 sec/swing
+#define FLOP_DIVISOR       2
 
 // 6 leading/trailing spaces so text scrolls cleanly in and out
-// Full text: "      StEbbS WAtCH  MON Feb 23      " = 6+14+3+1+3+1+2+6 = 36 chars
+// Full text: "      StEbbS WAtCH  MON Feb 23      " = 36 chars
 #define SCROLL_CONTENT_LEN 36
+
+// Pendulum flop animation: all 4 top positions show the same character,
+// bouncing through a rotation: l → / → - → \ → 1 → \ → - → / → l ...
+// l = left vertical (E+F), / = forward slash (B+E), - = middle bar (G),
+// \ = backslash (C+F), 1 = right vertical (B+C)
+#define FLOP_CYCLE_LEN  8
+static const char flop_seq[FLOP_CYCLE_LEN] = {'l', '/', '-', '\\', '1', '\\', '-', '/'};
 
 // Day-of-week abbreviations (0=Monday...6=Sunday)
 static const char *_stebbs_dow_names[] = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"};
@@ -53,23 +62,6 @@ static uint8_t _stebbs_dow(watch_date_time_t dt) {
     return (dt.unit.day + 13 * (m + 1) / 5 + y + y / 4 + 525 - 2) % 7;
 }
 
-// Star twinkle animation: each of the 4 top positions independently cycles
-// through this sequence, staggered by star_phase_offset[].
-// Uses '-' (dim), '0' (ring with top segment A), '8' (all segments bright).
-static const char star_chars[] = {
-    ' ', ' ', ' ', ' ',   // 4 dark frames (waiting between twinkles)
-    '-',                   // 1 dim glimmer
-    '0',                   // 1 ring glow (segment A = top bar lit)
-    '8',                   // 1 full burst (all segments)
-    '0',                   // 1 ring glow (dimming)
-    '-',                   // 1 last glimmer
-    ' ', ' ', ' ',         // 3 dark frames
-};
-#define STAR_CYCLE_LEN 13
-
-// Stagger each of the 4 positions so they don't twinkle simultaneously
-static const uint8_t star_phase_offset[4] = {0, 5, 9, 3};
-
 static void _update_scroll_text(stebbs_state_t *state) {
     watch_date_time_t date_time = movement_get_local_date_time();
     uint8_t dow = _stebbs_dow(date_time);
@@ -81,19 +73,17 @@ static void _update_scroll_text(stebbs_state_t *state) {
 static void _stebbs_display(stebbs_state_t *state) {
     char display_buf[11];
 
-    // Top 4 chars: independently twinkling stars
-    for (int i = 0; i < 4; i++) {
-        uint8_t phase = (state->fireworks_frame + star_phase_offset[i]) % STAR_CYCLE_LEN;
-        display_buf[i] = star_chars[phase];
-    }
+    // Top 4 positions: all show the same flop character simultaneously
+    char flop_ch = flop_seq[state->flop_frame];
+    for (int i = 0; i < 4; i++) display_buf[i] = flop_ch;
 
-    // Bottom 6 chars: scrolling text
+    // Bottom 6 positions: scrolling text
     for (int i = 0; i < 6; i++) {
         int idx = (int)state->scroll_pos + i;
         display_buf[4 + i] = (idx < SCROLL_CONTENT_LEN) ? state->scroll_text[idx] : ' ';
     }
-    display_buf[10] = '\0';
 
+    display_buf[10] = '\0';
     watch_clear_colon();
     watch_display_text(WATCH_POSITION_FULL, display_buf);
 }
@@ -112,6 +102,7 @@ void stebbs_face_setup(uint8_t watch_face_index, void ** context_ptr) {
 void stebbs_face_activate(void *context) {
     stebbs_state_t *state = (stebbs_state_t *)context;
     state->tick_count = 0;
+    state->flop_frame = 0;
     _update_scroll_text(state);  // refresh time every time face is entered
     movement_request_tick_frequency(TICK_FREQUENCY);
 }
@@ -128,10 +119,12 @@ bool stebbs_face_loop(movement_event_t event, void *context) {
             if (!state->paused) {
                 state->tick_count++;
 
-                // Advance star twinkle every tick (wraps cleanly at STAR_CYCLE_LEN)
-                state->fireworks_frame = (state->fireworks_frame + 1) % STAR_CYCLE_LEN;
+                // Advance flop every FLOP_DIVISOR ticks
+                if (state->tick_count % FLOP_DIVISOR == 0) {
+                    state->flop_frame = (state->flop_frame + 1) % FLOP_CYCLE_LEN;
+                }
 
-                // Advance scroll every SCROLL_DIVISOR ticks (4 chars/sec)
+                // Advance scroll every SCROLL_DIVISOR ticks
                 if (state->tick_count % SCROLL_DIVISOR == 0) {
                     state->scroll_pos++;
                     if (state->scroll_pos >= SCROLL_CONTENT_LEN) {

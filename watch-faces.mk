@@ -66,4 +66,10 @@ SRCS += \
   ./watch-faces/complication/lander_face.c \
   ./watch-faces/complication/simon_face.c \
   ./watch-faces/complication/ping_face.c \
+  ./movement_custom_signal_tunes.c \
+  ./watch-faces/settings/chime_face.c \
+  ./watch-faces/complication/step_counter_face.c \
+  ./watch-faces/complication/awake_face.c \
+  ./watch-faces/complication/nxtup_face.c \
+  ./lib/embedded_pedometer/count_steps.c \
 # New watch faces go above this line.

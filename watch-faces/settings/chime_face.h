@@ -22,44 +22,43 @@
  * SOFTWARE.
  */
 
-#ifndef STEBBS_FACE_H_
-#define STEBBS_FACE_H_
+#ifndef CHIME_FACE_H_
+#define CHIME_FACE_H_
 
 /*
- * STEBBS WATCH FACE
+ * CHIME face — runtime hourly signal tune picker
+ * ===============================================
+ * Lets you choose which tune plays as the hourly chime.
+ * The selection takes effect immediately and persists until power cycle.
  *
- * Simultaneously scrolls "StEbbS HH:MM" across the bottom 6 positions
- * while a fireworks animation loops in the top 4 positions.
+ * Display: top-left "CH", top-right tune number (01-17),
+ *          bottom: scrolling 6-char tune name.
  *
- * Usage:
- * - LIGHT button: Illuminate LED
- * - MODE button: Move to next watch face
- * - ALARM button: Pause/resume animations
+ * ALARM button: cycle to next tune (selection takes effect immediately).
+ * ALARM long-press: preview/play the current tune.
+ * LIGHT button: suppress LED (don't illuminate).
+ * MODE: exit to next face.
  */
 
 #include "movement.h"
 
-#define STEBBS_SCROLL_TEXT_LEN 40
-
 typedef struct {
-    uint8_t scroll_pos;           // Current character position in scroll text
-    uint8_t flop_frame;           // Current frame in the pendulum flop cycle (0-7)
-    uint8_t tick_count;           // Raw tick counter (for scroll/flop rate divisors)
-    bool paused;                  // Animation paused
-    char scroll_text[STEBBS_SCROLL_TEXT_LEN]; // Pre-built scroll text with current time
-} stebbs_state_t;
+    uint8_t current_tune;
+    uint8_t scroll_pos;
+    bool playing;
+} chime_state_t;
 
-void stebbs_face_setup(uint8_t watch_face_index, void ** context_ptr);
-void stebbs_face_activate(void *context);
-bool stebbs_face_loop(movement_event_t event, void *context);
-void stebbs_face_resign(void *context);
+void chime_face_setup(uint8_t watch_face_index, void ** context_ptr);
+void chime_face_activate(void *context);
+bool chime_face_loop(movement_event_t event, void *context);
+void chime_face_resign(void *context);
 
-#define stebbs_face ((const watch_face_t){ \
-    stebbs_face_setup, \
-    stebbs_face_activate, \
-    stebbs_face_loop, \
-    stebbs_face_resign, \
+#define chime_face ((const watch_face_t){ \
+    chime_face_setup, \
+    chime_face_activate, \
+    chime_face_loop, \
+    chime_face_resign, \
     NULL, \
 })
 
-#endif // STEBBS_FACE_H_
+#endif // CHIME_FACE_H_

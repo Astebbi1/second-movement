@@ -1,5 +1,8 @@
 **/build/
 **/build-sim/
+# Allow firmware snapshots in releases/
+!releases/
+!releases/**
 *.b#*
 *.bin
 *.d

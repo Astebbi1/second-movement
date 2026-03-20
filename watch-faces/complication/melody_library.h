@@ -34,7 +34,10 @@ typedef struct {
     const int8_t *sequence;        // buzzer note sequence (terminated with 0)
 } melody_tune_t;
 
-#define MELODY_NUM_TUNES 7
+// Number of tunes available to alarm_face for per-alarm melody selection (indices 0..ALARM_MELODY_NUM_TUNES-1)
+#define ALARM_MELODY_NUM_TUNES 8
+// Total tunes in the library, including melody_face-only entries
+#define MELODY_NUM_TUNES 17
 
 extern const melody_tune_t melody_tunes[MELODY_NUM_TUNES];
 

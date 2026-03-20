@@ -204,6 +204,10 @@ static void led_duration_setting_display(uint8_t subsecond) {
             watch_display_text(WATCH_POSITION_BOTTOM, "instnt");
         } else if (movement_get_backlight_dwell() == 0b111) {
             watch_display_text(WATCH_POSITION_BOTTOM, "no LEd");
+        } else if (movement_get_backlight_dwell() == 4) {
+            watch_display_text(WATCH_POSITION_BOTTOM, "rAinbO");
+        } else if (movement_get_backlight_dwell() == 5) {
+            watch_display_text(WATCH_POSITION_BOTTOM, "toGGLE");
         } else {
             sprintf(buf, " %1d SeC", (movement_get_backlight_dwell() * 2 - 1) % 10);
             watch_display_text(WATCH_POSITION_BOTTOM, buf);
@@ -213,8 +217,8 @@ static void led_duration_setting_display(uint8_t subsecond) {
 
 static void led_duration_setting_advance(void) {
     movement_set_backlight_dwell(movement_get_backlight_dwell() + 1);
-    if (movement_get_backlight_dwell() > 3) {
-        // set all bits to disable the LED
+    if (movement_get_backlight_dwell() > 5) {
+        // skip unused value 6; 0b111 wraps back to 0 (instant) on next press
         movement_set_backlight_dwell(0b111);
     }
 }

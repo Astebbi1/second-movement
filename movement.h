@@ -289,6 +289,7 @@ typedef struct {
 
     // LED stuff
     bool light_on;
+    uint8_t led_rainbow_step;   // rainbow mode: 0=red, 1=green, 2=blue, cycling
 
     // background task handling
     bool has_scheduled_background_task;
@@ -316,6 +317,14 @@ typedef struct {
     // signal and alarm volumes
     watch_buzzer_volume_t signal_volume;
     watch_buzzer_volume_t alarm_volume;
+
+    // hourly chime tune selection (0 = default; see signal_tunes table)
+    uint8_t signal_tune_index;
+
+    // step counter state
+    bool counting_steps;
+    bool count_steps_keep_on;
+    bool count_steps_keep_off;
 } movement_state_t;
 
 void movement_move_to_face(uint8_t watch_face_index);
@@ -421,3 +430,41 @@ bool movement_set_accelerometer_motion_threshold(uint8_t new_threshold);
 // If the board has multiple temperature sensors, it will use the most accurate one available.
 // If the board has no temperature sensors, it will return 0xFFFFFFFF.
 float movement_get_temperature(void);
+
+// --- Hourly chime tune selection ---
+// Get/set the index into signal_tunes[] used by movement_play_signal().
+// Defaults to 0 (default beep). Resets to 0 on power cycle.
+uint8_t movement_get_signal_tune_index(void);
+void movement_set_signal_tune_index(uint8_t index);
+
+// --- Step counter ---
+// Enable/disable the LIS2DW step counting mode (FIFO at 12.5 Hz).
+bool movement_enable_step_count(bool force_enable);
+bool movement_enable_step_count_multiple_attempts(uint8_t max_tries, bool force_enable);
+bool movement_disable_step_count(bool disable_immediately);
+bool movement_step_count_is_enabled(void);
+
+// keep_on: prevent the step counter from being disabled when leaving step_counter_face
+// keep_off: prevent it from being enabled by background enable/disable logic
+void movement_set_step_count_keep_on(bool keep_on);
+void movement_set_step_count_keep_off(bool keep_off);
+bool movement_step_count_keep_on(void);
+bool movement_step_count_keep_off(void);
+
+// Get the current accumulated step count (processed from FIFO).
+uint32_t movement_get_step_count(void);
+
+// Reset the step count to zero.
+void movement_reset_step_count(void);
+
+// No-op stub for LIS2DUX hardware (not present on this board).
+void movement_update_step_count_lis2dux(void);
+
+// Returns true if the board has the LIS2DW accelerometer.
+bool movement_has_lis2dw(void);
+
+// Returns false always (no LIS2DUX on this board).
+bool movement_has_lis2dux(void);
+
+// Returns true if battery is too low to run the step counter.
+bool movement_step_counter_in_low_battery(void);
