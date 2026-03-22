@@ -290,7 +290,7 @@ typedef struct {
 
     // LED stuff
     bool light_on;
-    // led_rainbow_step removed: rainbow is now driven by cb_rainbow_update via RTC
+    bool global_light_on;   // true when clock-face toggle has locked the backlight on
 
     // background task handling
     bool has_scheduled_background_task;
@@ -336,6 +336,10 @@ bool movement_default_loop_handler(movement_event_t event);
 void movement_illuminate_led(void);
 void movement_force_led_on(uint8_t red, uint8_t green, uint8_t blue);
 void movement_force_led_off(void);
+/** Toggle the global persistent backlight (toggle LED mode, clock-face home base).
+ *  When on, the backlight stays lit across all faces regardless of face-level LED handling.
+ *  Call from clock_face only; other faces' LIGHT buttons are unaffected. */
+void movement_toggle_global_light(void);
 
 void movement_request_tick_frequency(uint8_t freq);
 

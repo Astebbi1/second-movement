@@ -441,6 +441,8 @@ void movement_request_tick_frequency(uint8_t freq) {
 }
 
 void movement_illuminate_led(void) {
+    // Global persistent backlight is in charge; don't stack a timed LED on top
+    if (movement_state.global_light_on) return;
     if (movement_state.settings.bit.led_duration != 0b111) {
         if (movement_state.settings.bit.led_duration == 5) {
             // Toggle mode: press turns on, press again turns off
@@ -503,12 +505,34 @@ void movement_force_led_on(uint8_t red, uint8_t green, uint8_t blue) {
 }
 
 void movement_force_led_off(void) {
+    // Global persistent backlight overrides; only movement_toggle_global_light can turn it off
+    if (movement_state.global_light_on) return;
     movement_state.light_on = false;
     // Disable both the LED-off timer and the rainbow color-update callback
     watch_rtc_disable_comp_callback_no_schedule(LED_TIMEOUT);
     watch_rtc_disable_comp_callback_no_schedule(RAINBOW_UPDATE);
     movement_volatile_state.schedule_next_comp = true;
     watch_set_led_off();
+}
+
+void movement_toggle_global_light(void) {
+    if (movement_state.global_light_on) {
+        // Turn off: clear flag first so movement_force_led_off actually fires
+        movement_state.global_light_on = false;
+        movement_force_led_off();
+    } else {
+        // Turn on: apply configured color with no timeout
+        movement_state.global_light_on = true;
+        movement_state.light_on = true;
+        watch_set_led_color_rgb(
+            movement_state.settings.bit.led_red_color   | movement_state.settings.bit.led_red_color   << 4,
+            movement_state.settings.bit.led_green_color | movement_state.settings.bit.led_green_color << 4,
+            movement_state.settings.bit.led_blue_color  | movement_state.settings.bit.led_blue_color  << 4
+        );
+        // Cancel any pending LED timeout left over from a previous illuminate call
+        watch_rtc_disable_comp_callback_no_schedule(LED_TIMEOUT);
+        movement_volatile_state.schedule_next_comp = true;
+    }
 }
 
 bool movement_default_loop_handler(movement_event_t event) {

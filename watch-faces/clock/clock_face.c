@@ -255,6 +255,18 @@ bool clock_face_loop(movement_event_t event, void *context) {
         case EVENT_ALARM_LONG_PRESS:
             clock_toggle_time_signal(state);
             break;
+        case EVENT_LIGHT_BUTTON_DOWN:
+            // In toggle mode suppress the instant-on behavior; we handle this on UP
+            if (movement_get_backlight_dwell() != 5) return movement_default_loop_handler(event);
+            break;
+        case EVENT_LIGHT_BUTTON_UP:
+            if (movement_get_backlight_dwell() == 5) {
+                // Clock face is the home base for the global persistent backlight toggle
+                movement_toggle_global_light();
+            } else {
+                movement_illuminate_led();
+            }
+            break;
         case EVENT_BACKGROUND_TASK:
             // uncomment this line to snap back to the clock face when the hour signal sounds:
             // movement_move_to_face(state->watch_face_index);
