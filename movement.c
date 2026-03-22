@@ -1129,7 +1129,8 @@ static void _movement_count_new_steps_lis2dw(void) {
     if (movement_state.tick_frequency != 1) return;
 
     lis2dw_fifo_t fifo_data;
-    if (lis2dw_read_fifo(&fifo_data, _step_fifo_timeout)) {
+    lis2dw_read_fifo(&fifo_data, _step_fifo_timeout);
+    if (fifo_data.count > 0) {
 #if COUNT_STEPS_USE_ESPRUINO
         _total_step_count += count_steps_espruino(&fifo_data);
 #else
