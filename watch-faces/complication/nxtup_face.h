@@ -41,6 +41,9 @@
  *   Top: "NX" (2 chars)
  *   Bottom: scrolling event name / alternates to show day count
  *
+ * Bottom 6 chars scroll: "name DOW Mon day" (e.g. "AndrEW bdAY SAt noV 1"),
+ * repeating with a 2-space gap. Days=0 still shows the name scroll (0 in top is enough).
+ *
  * ALARM button: advance to next event (wraps around)
  * LIGHT button: go back to previous event
  * LIGHT long-press: return to the nearest upcoming event (index 0)
@@ -56,9 +59,9 @@ typedef struct {
     uint8_t  event_count;                   // total events loaded (≤ NXTUP_MAX_EVENTS)
     uint8_t  sorted_order[NXTUP_MAX_EVENTS];// sorted_order[i] = index into yearly_events[]
     uint16_t days_until[NXTUP_MAX_EVENTS];  // days until each event (parallel, unsorted)
-    uint8_t  scroll_pos;                    // current scroll offset in event name
-    uint8_t  classic_phase;                 // classic LCD: 0=name, 1=days (alternating)
-    uint8_t  classic_phase_ticks;           // ticks remaining in current classic phase
+    char     scroll_buf[56];                // "name DOW Mon day  " — built per event
+    uint8_t  scroll_buf_len;                // strlen(scroll_buf)
+    uint8_t  scroll_pos;                    // current scroll offset into scroll_buf
 } nxtup_state_t;
 
 void nxtup_face_setup(uint8_t watch_face_index, void **context_ptr);

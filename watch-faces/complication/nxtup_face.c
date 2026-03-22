@@ -28,11 +28,7 @@
 #include "nxtup_face.h"
 #include "movement_custom_events.h"
 
-// Classic LCD: ticks to show each phase (name vs days) at 2Hz = 0.5s/tick
-#define CLASSIC_NAME_TICKS  8   // 4 seconds of name scroll
-#define CLASSIC_DAYS_TICKS  6   // 3 seconds of days display
-
-// ─── date math ───────────────────────────────────────────────────────────────
+// ─── date / calendar helpers ──────────────────────────────────────────────────
 
 // Julian Day Number — same algorithm as day_one_face
 static uint32_t _jdn(uint16_t y, uint8_t m, uint8_t d) {
@@ -68,7 +64,7 @@ static uint16_t _days_until_event(uint8_t event_month, uint8_t event_day) {
     return (uint16_t)(event_jdn - today_jdn);
 }
 
-// ─── sorting ─────────────────────────────────────────────────────────────────
+// ─── sorting ──────────────────────────────────────────────────────────────────
 
 static void _build_sorted_list(nxtup_state_t *state) {
     uint8_t count = YEARLY_EVENT_COUNT;
@@ -95,46 +91,45 @@ static void _build_sorted_list(nxtup_state_t *state) {
     }
 }
 
-// ─── display helpers ─────────────────────────────────────────────────────────
+// ─── scroll string ────────────────────────────────────────────────────────────
 
-// Advance scroll position (call once per tick when scrolling)
-static void _advance_scroll(nxtup_state_t *state) {
-    const yearly_event_t *ev = &yearly_events[state->sorted_order[state->current_idx]];
-    uint8_t len = (uint8_t)strlen(ev->name);
-    if (len <= 6) return; // no scroll needed
-    uint8_t cycle = len + 2; // name + 2-space gap before repeat
-    state->scroll_pos = (state->scroll_pos + 1) % cycle;
+// (jdn + 1) % 7 → 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+static const char *_nxtup_dow_names[] = {
+    "Sun","Mon","tuE","WEd","tHu","Fri","SAt"
+};
+
+// Month abbreviations chosen for segment-display readability (1-indexed)
+static const char *_nxtup_month_names[] = {
+    "", "JAn","FEb","MAr","APr","MAY","Jun",
+    "JuL","AuG","SEP","OCt","noV","dEC"
+};
+
+// Builds "name DOW Mon day  " into state->scroll_buf.
+// The trailing 2 spaces act as the gap before the loop repeats.
+// Also resets scroll_pos to 0.
+static void _build_scroll_string(nxtup_state_t *state) {
+    uint8_t orig_idx = state->sorted_order[state->current_idx];
+    const yearly_event_t *ev = &yearly_events[orig_idx];
+    uint16_t days = state->days_until[orig_idx];
+
+    // Compute the day-of-week the event falls on
+    watch_date_time_t today = movement_get_local_date_time();
+    uint16_t y = today.unit.year + WATCH_RTC_REFERENCE_YEAR;
+    uint32_t today_jdn = _jdn(y, today.unit.month, today.unit.day);
+    uint32_t event_jdn = today_jdn + days;
+    uint8_t  dow = (uint8_t)((event_jdn + 1) % 7);
+
+    snprintf(state->scroll_buf, sizeof(state->scroll_buf),
+             "%s %s %s %u  ",
+             ev->name,
+             _nxtup_dow_names[dow],
+             _nxtup_month_names[ev->month],
+             ev->day);
+    state->scroll_buf_len = (uint8_t)strlen(state->scroll_buf);
+    state->scroll_pos = 0;
 }
 
-static void _display_name(const char *name, uint8_t scroll_pos) {
-    uint8_t len   = (uint8_t)strlen(name);
-    char    buf[7];
-
-    if (len <= 6) {
-        // Short name — left-align, space-pad
-        snprintf(buf, sizeof(buf), "%-6s", name);
-    } else {
-        // Scroll a 6-char window through name + 2-space gap
-        uint8_t cycle = len + 2;
-        for (uint8_t i = 0; i < 6; i++) {
-            uint8_t idx = (scroll_pos + i) % cycle;
-            buf[i] = (idx < len) ? name[idx] : ' ';
-        }
-        buf[6] = '\0';
-    }
-    watch_display_text(WATCH_POSITION_BOTTOM, buf);
-}
-
-static void _display_days_bottom(uint16_t days) {
-    char buf[7];
-    if (days == 0) {
-        watch_display_text(WATCH_POSITION_BOTTOM, "TODAY ");
-    } else {
-        unsigned d = days > 365 ? 365 : days;
-        snprintf(buf, sizeof(buf), "  %3u ", d);
-        watch_display_text(WATCH_POSITION_BOTTOM, buf);
-    }
-}
+// ─── display helpers ──────────────────────────────────────────────────────────
 
 static void _nxtup_update_display(nxtup_state_t *state) {
     if (state->event_count == 0) {
@@ -145,29 +140,21 @@ static void _nxtup_update_display(nxtup_state_t *state) {
 
     uint8_t  orig_idx = state->sorted_order[state->current_idx];
     uint16_t days     = state->days_until[orig_idx];
-    const yearly_event_t *ev = &yearly_events[orig_idx];
 
-    // Top: "NX" + 3-digit days (custom 5-char top); "NX" fallback on classic
+    // Top: "NX" + 3-digit days remaining (custom 5-char top); "NX" fallback on classic
     char top_buf[6];
     unsigned disp_days = days > 365 ? 365 : days;
     snprintf(top_buf, sizeof(top_buf), "NX%3u", disp_days);
     watch_display_text_with_fallback(WATCH_POSITION_TOP, top_buf, "NX");
 
-    if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
-        // Custom LCD: show name scroll in bottom, days always visible in top
-        if (days == 0) {
-            watch_display_text(WATCH_POSITION_BOTTOM, "TODAY ");
-        } else {
-            _display_name(ev->name, state->scroll_pos);
-        }
-    } else {
-        // Classic LCD: alternate between name and days
-        if (state->classic_phase == 0) {
-            _display_name(ev->name, state->scroll_pos);
-        } else {
-            _display_days_bottom(days);
-        }
+    // Bottom: 6-char window into the scroll string, wraps seamlessly via modulo
+    uint8_t len = state->scroll_buf_len;
+    char disp[7];
+    for (uint8_t i = 0; i < 6; i++) {
+        disp[i] = state->scroll_buf[(state->scroll_pos + i) % len];
     }
+    disp[6] = '\0';
+    watch_display_text(WATCH_POSITION_BOTTOM, disp);
 
     watch_clear_colon();
     watch_display_text(WATCH_POSITION_SECONDS, "  ");
@@ -186,10 +173,8 @@ void nxtup_face_setup(uint8_t watch_face_index, void **context_ptr) {
 void nxtup_face_activate(void *context) {
     nxtup_state_t *state = (nxtup_state_t *)context;
     _build_sorted_list(state);
-    state->current_idx        = 0;
-    state->scroll_pos         = 0;
-    state->classic_phase      = 0;
-    state->classic_phase_ticks = CLASSIC_NAME_TICKS;
+    state->current_idx = 0;
+    _build_scroll_string(state);
     movement_request_tick_frequency(2); // 2 Hz for smooth scrolling
 }
 
@@ -203,25 +188,17 @@ bool nxtup_face_loop(movement_event_t event, void *context) {
 
         case EVENT_TICK:
             if (state->event_count == 0) break;
-            // Advance name scroll
-            _advance_scroll(state);
-            // Classic LCD: manage phase alternation
-            if (watch_get_lcd_type() != WATCH_LCD_TYPE_CUSTOM) {
-                if (state->classic_phase_ticks > 0) {
-                    state->classic_phase_ticks--;
-                } else {
-                    state->classic_phase = !state->classic_phase;
-                    state->classic_phase_ticks = state->classic_phase
-                                                 ? CLASSIC_DAYS_TICKS
-                                                 : CLASSIC_NAME_TICKS;
-                }
-            }
-            // Recompute at midnight so days counts stay accurate
+
+            // Advance scroll one position per tick
+            state->scroll_pos = (state->scroll_pos + 1) % state->scroll_buf_len;
+
+            // Recompute at midnight so days counts and DOW stay accurate
             if (event.subsecond == 0) {
                 watch_date_time_t dt = movement_get_local_date_time();
                 if (dt.unit.hour == 0 && dt.unit.minute == 0) {
                     _build_sorted_list(state);
                     state->current_idx = 0;
+                    _build_scroll_string(state);
                 }
             }
             _nxtup_update_display(state);
@@ -231,9 +208,7 @@ bool nxtup_face_loop(movement_event_t event, void *context) {
             // Next event
             if (state->event_count > 0) {
                 state->current_idx = (state->current_idx + 1) % state->event_count;
-                state->scroll_pos  = 0;
-                state->classic_phase       = 0;
-                state->classic_phase_ticks = CLASSIC_NAME_TICKS;
+                _build_scroll_string(state);
                 _nxtup_update_display(state);
             }
             break;
@@ -248,19 +223,15 @@ bool nxtup_face_loop(movement_event_t event, void *context) {
                 state->current_idx = (state->current_idx == 0)
                                      ? (state->event_count - 1)
                                      : (state->current_idx - 1);
-                state->scroll_pos  = 0;
-                state->classic_phase       = 0;
-                state->classic_phase_ticks = CLASSIC_NAME_TICKS;
+                _build_scroll_string(state);
                 _nxtup_update_display(state);
             }
             break;
 
         case EVENT_LIGHT_LONG_PRESS:
             // Jump back to nearest upcoming event
-            state->current_idx        = 0;
-            state->scroll_pos         = 0;
-            state->classic_phase      = 0;
-            state->classic_phase_ticks = CLASSIC_NAME_TICKS;
+            state->current_idx = 0;
+            _build_scroll_string(state);
             _nxtup_update_display(state);
             break;
 
