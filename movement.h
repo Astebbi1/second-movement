@@ -163,6 +163,7 @@ typedef enum {
     RESIGN_TIMEOUT,             // Resign active face timeout
     SLEEP_TIMEOUT,              // Low-energy begin timeout
     MINUTE_TIMEOUT,             // Top of the Minute timeout
+    RAINBOW_UPDATE,             // Smooth rainbow LED periodic color update (index 7)
 } movement_timeout_index_t;
 
 typedef enum {
@@ -289,7 +290,7 @@ typedef struct {
 
     // LED stuff
     bool light_on;
-    uint8_t led_rainbow_step;   // rainbow mode: 0=red, 1=green, 2=blue, cycling
+    // led_rainbow_step removed: rainbow is now driven by cb_rainbow_update via RTC
 
     // background task handling
     bool has_scheduled_background_task;

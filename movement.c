@@ -139,6 +139,7 @@ void cb_mode_btn_timeout_interrupt(void);
 void cb_light_btn_timeout_interrupt(void);
 void cb_alarm_btn_timeout_interrupt(void);
 void cb_led_timeout_interrupt(void);
+void cb_rainbow_update(void);
 void cb_resign_timeout_interrupt(void);
 void cb_sleep_timeout_interrupt(void);
 void cb_buzzer_start(void);
@@ -455,15 +456,20 @@ void movement_illuminate_led(void) {
         }
         movement_state.light_on = true;
         if (movement_state.settings.bit.led_duration == 4) {
-            // Rainbow mode: start at red and cycle every second for 5 seconds
-            movement_state.led_rainbow_step = 0;
-            watch_set_led_color_rgb(0xFF, 0, 0);
+            // Rainbow mode: smooth 4-second gradient via RTC compare callback
             rtc_counter_t counter = watch_rtc_get_counter();
             uint32_t freq = watch_rtc_get_frequency();
+            // Schedule LED-off at +4 seconds
             watch_rtc_register_comp_callback_no_schedule(
                 cb_led_timeout_interrupt,
-                counter + 5 * freq,
+                counter + 4 * freq,
                 LED_TIMEOUT
+            );
+            // Schedule first color update immediately (fires ~next tick)
+            watch_rtc_register_comp_callback_no_schedule(
+                cb_rainbow_update,
+                counter + 1,
+                RAINBOW_UPDATE
             );
             movement_volatile_state.schedule_next_comp = true;
         } else {
@@ -498,8 +504,9 @@ void movement_force_led_on(uint8_t red, uint8_t green, uint8_t blue) {
 
 void movement_force_led_off(void) {
     movement_state.light_on = false;
-    // The led timeout probably already triggered, but still disable just in case we are switching off the light by other means
+    // Disable both the LED-off timer and the rainbow color-update callback
     watch_rtc_disable_comp_callback_no_schedule(LED_TIMEOUT);
+    watch_rtc_disable_comp_callback_no_schedule(RAINBOW_UPDATE);
     movement_volatile_state.schedule_next_comp = true;
     watch_set_led_off();
 }
@@ -1462,15 +1469,7 @@ bool app_loop(void) {
     // process LIS2DW FIFO for step counting once per second
     if ((pending_events & (1 << EVENT_TICK)) && event.subsecond == 0) {
         _movement_count_new_steps_lis2dw();
-        // rainbow mode: advance color once per second while LED is on
-        if (movement_state.light_on && movement_state.settings.bit.led_duration == 4) {
-            movement_state.led_rainbow_step++;
-            switch (movement_state.led_rainbow_step % 3) {
-                case 0: watch_set_led_color_rgb(0xFF, 0,    0   ); break; // red
-                case 1: watch_set_led_color_rgb(0,    0xFF, 0   ); break; // green
-                case 2: watch_set_led_color_rgb(0,    0,    0xFF); break; // blue
-            }
-        }
+        // rainbow LED is now handled by cb_rainbow_update via RTC compare callback
     }
 
     // Pop the EVENT_TIMEOUT out of the pending_events so it can be handled separately
@@ -1695,6 +1694,49 @@ void cb_alarm_btn_timeout_interrupt(void) {
 
 void cb_led_timeout_interrupt(void) {
     movement_volatile_state.turn_led_off = true;
+}
+
+// Smooth rainbow LED: called every 1/8 second via RTC compare callback.
+// Computes a full HSV rainbow over a 4-second cycle using the RTC counter
+// as the time source, so the gradient speed is independent of tick frequency.
+void cb_rainbow_update(void) {
+    if (!movement_state.light_on || movement_state.settings.bit.led_duration != 4) return;
+
+    rtc_counter_t counter = watch_rtc_get_counter();
+    uint32_t freq = watch_rtc_get_frequency();
+
+    // Phase 0..(4*freq-1) maps to one full 4-second rainbow cycle
+    uint32_t total  = 4 * freq;
+    uint32_t phase  = (uint32_t)(counter % total);
+    uint32_t seg    = total / 6;               // ticks per 60-degree HSV segment
+    if (seg < 1) seg = 1;
+    uint32_t seg_idx   = phase / seg;
+    uint32_t seg_phase = phase - seg_idx * seg; // position within segment
+
+    // Linearly interpolate 0-255 across segment
+    uint8_t up = (seg > 1) ? (uint8_t)((seg_phase * 255) / (seg - 1)) : 255;
+    uint8_t dn = 255 - up;
+
+    uint8_t r, g, b;
+    switch (seg_idx % 6) {
+        case 0: r = 255; g = up;  b = 0;   break; // red → yellow
+        case 1: r = dn;  g = 255; b = 0;   break; // yellow → green
+        case 2: r = 0;   g = 255; b = up;  break; // green → cyan
+        case 3: r = 0;   g = dn;  b = 255; break; // cyan → blue
+        case 4: r = up;  g = 0;   b = 255; break; // blue → magenta
+        default: r = 255; g = 0;  b = dn;  break; // magenta → red
+    }
+    watch_set_led_color_rgb(r, g, b);
+
+    // Reschedule for 1/8 second from now
+    uint32_t interval = freq / 8;
+    if (interval < 1) interval = 1;
+    watch_rtc_register_comp_callback_no_schedule(
+        cb_rainbow_update,
+        counter + interval,
+        RAINBOW_UPDATE
+    );
+    movement_volatile_state.schedule_next_comp = true;
 }
 
 void cb_resign_timeout_interrupt(void) {
