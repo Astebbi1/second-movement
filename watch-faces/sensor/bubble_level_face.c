@@ -199,9 +199,18 @@ bool bubble_level_face_loop(movement_event_t event, void *context) {
 void bubble_level_face_resign(void *context) {
     bubble_level_state_t *state = (bubble_level_state_t *)context;
 
-    // Clean up accelerometer FIFO
+    // Restore tick frequency so faces that don't set it explicitly get 1 Hz
+    movement_request_tick_frequency(1);
+
+    // Clean up accelerometer FIFO.
+    // If step counting is active, we must not disable the FIFO — just clear
+    // the stale samples so the pedometer resumes cleanly from here.
     lis2dw_clear_fifo();
-    lis2dw_disable_fifo();
+    if (movement_step_count_is_enabled()) {
+        lis2dw_enable_fifo(); // restore FIFO for step counting
+    } else {
+        lis2dw_disable_fifo();
+    }
 
     // Ensure LED is off when leaving the face
     if (state->led_enabled) {

@@ -130,6 +130,21 @@ void awake_face_setup(uint8_t watch_face_index, void **context_ptr) {
 
 void awake_face_activate(void *context) {
     awake_state_t *state = (awake_state_t *)context;
+
+    // Guard against a stale epoch stored before the RTC was set (e.g. right
+    // after flashing). If the saved start time is more than 24 h in the past,
+    // the value is clearly wrong — reset to now so the display doesn't rail at 99:xx.
+    uint32_t now = _awake_now_epoch();
+    if (now > state->mode_start_epoch && (now - state->mode_start_epoch) > 86400) {
+        state->mode                   = AWAKE_MODE_AWAKE;
+        state->mode_start_epoch       = now;
+        state->prev_awake_start_epoch = now;
+        state->last_step_epoch        = now;
+        state->last_step_count        = 0;
+        state->prev_sleep_seconds     = 0;
+        state->show_prev_sleep        = false;
+    }
+
     // Snapshot current step count so the first check has a baseline
     state->last_step_count = movement_get_step_count();
     _awake_check_activity(state);
