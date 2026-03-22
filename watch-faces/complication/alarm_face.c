@@ -240,7 +240,29 @@ void alarm_face_setup(uint8_t watch_face_index, void **context_ptr) {
         alarm_state_t *state = (alarm_state_t *)*context_ptr;
         memset(*context_ptr, 0, sizeof(alarm_state_t));
         // initialize the default alarm values
-        for (uint8_t i = 0; i < ALARM_ALARMS; i++) {
+        // Alarm 1: 8:35am weekdays, Pokemon melody
+        state->alarm[0].day = ALARM_DAY_WORKDAY;
+        state->alarm[0].hour = 8;
+        state->alarm[0].minute = 35;
+        state->alarm[0].pitch = 3;  // melody mode
+        state->alarm[0].beeps = 2;  // Pokemon
+        state->alarm[0].enabled = true;
+        // Alarm 2: 9:00am weekends, Nickelodeon melody
+        state->alarm[1].day = ALARM_DAY_WEEKEND;
+        state->alarm[1].hour = 9;
+        state->alarm[1].minute = 0;
+        state->alarm[1].pitch = 3;
+        state->alarm[1].beeps = 5;  // Nickelodeon
+        state->alarm[1].enabled = true;
+        // Alarm 3: 9:45am Sundays, Tetris melody
+        state->alarm[2].day = 6;    // Sunday
+        state->alarm[2].hour = 9;
+        state->alarm[2].minute = 45;
+        state->alarm[2].pitch = 3;
+        state->alarm[2].beeps = 3;  // Tetris
+        state->alarm[2].enabled = true;
+        // Remaining slots: generic defaults
+        for (uint8_t i = 3; i < ALARM_ALARMS; i++) {
             state->alarm[i].day = ALARM_DAY_EACH_DAY;
             state->alarm[i].beeps = 5;
             state->alarm[i].pitch = 1;

@@ -1228,6 +1228,7 @@ void app_init(void) {
         movement_state.settings.bit.le_interval = MOVEMENT_DEFAULT_LOW_ENERGY_INTERVAL;
 #endif
         movement_state.settings.bit.led_duration = MOVEMENT_DEFAULT_LED_DURATION;
+        movement_state.settings.bit.use_imperial_units = true;
 
         movement_store_settings();
     }
@@ -1251,6 +1252,8 @@ void app_init(void) {
 
     movement_state.signal_volume = MOVEMENT_DEFAULT_SIGNAL_VOLUME;
     movement_state.alarm_volume = MOVEMENT_DEFAULT_ALARM_VOLUME;
+    movement_state.signal_tune_index = 15;  // Gameboy pause chime
+    movement_state.alarm_enabled = true;
     movement_state.light_on = false;
     movement_state.next_available_backup_register = 2;
     _movement_reset_inactivity_countdown();
