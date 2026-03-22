@@ -29,31 +29,30 @@
 #include "zones.h"
 
 const watch_face_t watch_faces[] = {
-    // --- primary faces (indices 0-9) ---
+    // --- primary faces (indices 0-7) ---
     clock_face,
-    stebbs_face,
     day_one_face,
-    step_counter_face,
     awake_face,
+    step_counter_face,
     sunrise_sunset_face,
-    moon_phase_face,
-    alarm_face,
-    countdown_face,
-    wyoscan_face,
-    // --- secondary faces / tools (indices 10-17, long-press Mode from face 0) ---
     nxtup_face,
-    melody_face,
-    bubble_level_face,
     temperature_display_face,
-    voltage_face,
-    chime_face,
-    settings_face,
-    set_time_face,
-    // --- tertiary faces / games (indices 16-21, really-long-press Mode from face 0) ---
+    wyoscan_face,
+    // --- secondary faces / tools (indices 8-14, long-press Mode from face 0) ---
+    stebbs_face,
+    bubble_level_face,
     tap_tempo_face,
-    tally_face,
+    countdown_face,
     fast_stopwatch_face,
+    tally_face,
     toss_up_face,
+    // --- tertiary faces / settings+games (indices 15-22, really-long-press Mode from face 0) ---
+    melody_face,
+    chime_face,
+    alarm_face,
+    set_time_face,
+    settings_face,
+    voltage_face,
     butterfly_game_face,
     endless_runner_face,
 };
@@ -61,10 +60,10 @@ const watch_face_t watch_faces[] = {
 #define MOVEMENT_NUM_FACES (sizeof(watch_faces) / sizeof(watch_face_t))
 
 /* Index of the first secondary (tools) face. Long-press Mode jumps here from face 0. */
-#define MOVEMENT_SECONDARY_FACE_INDEX 10
+#define MOVEMENT_SECONDARY_FACE_INDEX 8
 
 /* Index of the first tertiary (games) face. Really-long-press Mode jumps here from face 0. */
-#define MOVEMENT_TERTIARY_FACE_INDEX 18
+#define MOVEMENT_TERTIARY_FACE_INDEX 15
 
 /* Default timezone for first boot. UTZ_NEW_YORK = America/New_York (Eastern, includes DST) */
 #define MOVEMENT_DEFAULT_TIMEZONE UTZ_NEW_YORK
