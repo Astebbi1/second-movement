@@ -251,11 +251,16 @@ static inline void _movement_reset_inactivity_countdown(void) {
     rtc_counter_t counter = watch_rtc_get_counter();
     uint32_t freq = watch_rtc_get_frequency();
 
-    watch_rtc_register_comp_callback_no_schedule(
-        cb_resign_timeout_interrupt,
-        counter + movement_timeout_inactivity_deadlines[movement_state.settings.bit.to_interval] * freq,
-        RESIGN_TIMEOUT
-    );
+    if (movement_state.settings.bit.to_interval < 3) {
+        // to_interval == 3 means "never" — don't schedule a resign timeout
+        watch_rtc_register_comp_callback_no_schedule(
+            cb_resign_timeout_interrupt,
+            counter + movement_timeout_inactivity_deadlines[movement_state.settings.bit.to_interval] * freq,
+            RESIGN_TIMEOUT
+        );
+    } else {
+        watch_rtc_disable_comp_callback_no_schedule(RESIGN_TIMEOUT);
+    }
 
     movement_volatile_state.enter_sleep_mode = false;
 
