@@ -131,6 +131,7 @@ void bubble_level_face_setup(uint8_t watch_face_index, void **context_ptr) {
     if (*context_ptr == NULL) {
         *context_ptr = malloc(sizeof(bubble_level_state_t));
         memset(*context_ptr, 0, sizeof(bubble_level_state_t));
+        ((bubble_level_state_t *)*context_ptr)->use_y_axis = true;
     }
 }
 

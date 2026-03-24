@@ -111,7 +111,7 @@ const char *watch_face_names[] = {
 /* Enable or disable the sound on mode button press */
 #define MOVEMENT_DEFAULT_BUTTON_SOUND true
 
-#define MOVEMENT_DEFAULT_BUTTON_VOLUME WATCH_BUZZER_VOLUME_SOFT
+#define MOVEMENT_DEFAULT_BUTTON_VOLUME WATCH_BUZZER_VOLUME_LOUD
 #define MOVEMENT_DEFAULT_SIGNAL_VOLUME WATCH_BUZZER_VOLUME_LOUD
 #define MOVEMENT_DEFAULT_ALARM_VOLUME WATCH_BUZZER_VOLUME_LOUD
 
@@ -143,8 +143,10 @@ const char *watch_face_names[] = {
  * 1: 1 second
  * 2: 3 seconds
  * 3: 5 seconds
+ * 4: Rainbow (4-second gradient)
+ * 5: Toggle (press on/off)
  */
-#define MOVEMENT_DEFAULT_LED_DURATION 2
+#define MOVEMENT_DEFAULT_LED_DURATION 4
 
 /* Optionally debounce button presses (disable by default).
  * A value of 4 is a good starting point if you have issues
