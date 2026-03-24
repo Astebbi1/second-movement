@@ -1,8 +1,5 @@
 **/build/
 **/build-sim/
-# Allow firmware snapshots in releases/
-!releases/
-!releases/**
 *.b#*
 *.bin
 *.d
@@ -30,3 +27,9 @@ fp-info-cache
 *.plan
 /.direnv
 /.emscripten_cache
+# Allow firmware snapshots in releases/ (must come after *.bin/*.uf2/*.hex rules)
+!releases/
+!releases/**/
+!releases/**/*.uf2
+!releases/**/*.bin
+!releases/**/*.hex
