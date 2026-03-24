@@ -1154,6 +1154,11 @@ static void _movement_count_new_steps_lis2dw(void) {
         _total_step_count += count_steps_simple(&fifo_data);
 #endif
     }
+    // Restart FIFO: collect-and-stop mode permanently halts when full.
+    // Any face that requests tick_frequency > 1 blocks this function, so the
+    // FIFO can fill and stop while on e.g. set_time_face. Cycling it here
+    // ensures it always resumes after the next read.
+    lis2dw_clear_fifo();
 }
 
 // ============================================================
