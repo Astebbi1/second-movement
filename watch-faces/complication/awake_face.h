@@ -26,42 +26,34 @@
 #define AWAKE_FACE_H_
 
 /*
- * AWAKE face — automatic sleep/wake tracker using step counting
- * =============================================================
+ * AWAKE face — sleep/wake tracker using step counting
+ * ====================================================
  * Detects awake vs. sleep state based on accelerometer step activity.
  * After AWAKE_SLEEP_THRESHOLD_MINUTES of no steps, transitions to SLEEP mode.
  * Any new steps while in SLEEP mode transitions back to AWAKE.
  *
- * AWAKE mode display:
- *   Top: "AWAKE" (custom) / "AW" (classic)
- *   Bottom: HH:MM elapsed since waking
- *   Sleep indicator: OFF
+ * AWAKE mode:
+ *   Top: "AWAKE"    Bottom: HH:MM time since waking
  *
- * SLEEP mode display:
- *   Top: "SLEEP" (custom) / "SL" (classic)
- *   Bottom: HH:MM elapsed since falling asleep
- *   Sleep indicator: ON
+ * SLEEP mode:
+ *   Top: "SLEEP"    Bottom: HH:MM time sleeping    Crescent moon ON
  *
- * ALARM button (while AWAKE): show/dismiss previous sleep duration.
- *   Displays "SLEEP HH:MM" with sleep indicator for 8 seconds.
+ * ALARM tap: toggle showing last sleep duration ("SLEPT HH:MM").
+ *   Press again to return to current mode view.
  *
- * LIGHT long-press (while SLEEP): false-sleep correction.
- *   Reverts to AWAKE mode, restoring the original wake start time.
- *   Use this when the watch detects sleep but you were just sitting still
- *   or had the watch off for a while.
+ * ALARM long-press: manual "I just woke up" reset.
+ *   Forces AWAKE mode and resets the awake timer to right now.
+ *   Use this after taking the watch off, long naps, etc.
  *
- * Monitoring runs every minute as a background task, even on other faces.
+ * Monitoring runs every minute as a background task on any face.
  * Requires step counting to be enabled (step_counter_face enables it).
  */
 
 #include "movement.h"
 
 // Minutes of step inactivity before declaring sleep
-#define AWAKE_SLEEP_THRESHOLD_MINUTES 30
+#define AWAKE_SLEEP_THRESHOLD_MINUTES 60
 #define AWAKE_SLEEP_THRESHOLD_SEC     (AWAKE_SLEEP_THRESHOLD_MINUTES * 60)
-
-// Seconds to display previous sleep duration on ALARM press
-#define AWAKE_PREV_SLEEP_DISPLAY_TICKS 8
 
 typedef enum {
     AWAKE_MODE_AWAKE = 0,
@@ -70,10 +62,8 @@ typedef enum {
 
 typedef struct {
     awake_mode_t mode;
-    bool show_prev_sleep;           // currently showing previous sleep on ALARM press
-    uint8_t prev_sleep_ticks;       // countdown for show_prev_sleep display
+    bool show_prev_sleep;           // toggle: showing last sleep duration instead of current
     uint32_t mode_start_epoch;      // epoch when current mode (awake/sleep) started
-    uint32_t prev_awake_start_epoch;// saved wake start for false-sleep correction
     uint32_t prev_sleep_seconds;    // duration of last completed sleep period
     uint32_t last_step_epoch;       // epoch when steps were last detected
     uint32_t last_step_count;       // step count at last background check
