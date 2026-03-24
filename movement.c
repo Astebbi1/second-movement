@@ -1039,7 +1039,16 @@ static uint8_t _step_fifo_timeout = LIS2DW_FIFO_TIMEOUT;
 
 bool movement_enable_step_count(bool force_enable) {
     if (!movement_state.has_lis2dw) return false;
-    if (movement_state.counting_steps && !force_enable) return true;
+    if (movement_state.counting_steps && !force_enable) {
+        // Re-apply step counting config: low-energy mode may have changed range/rate
+        lis2dw_set_data_rate(LIS2DW_DATA_RATE_12_5_HZ);
+        lis2dw_set_mode(LIS2DW_MODE_LOW_POWER);
+        lis2dw_set_low_power_mode(LIS2DW_LP_MODE_1);
+        lis2dw_set_range(LIS2DW_RANGE_4_G);
+        lis2dw_enable_fifo();
+        lis2dw_set_low_noise_mode(true);
+        return true;
+    }
 
     // Configure LIS2DW for 12.5 Hz low-power FIFO mode
     lis2dw_set_data_rate(LIS2DW_DATA_RATE_12_5_HZ);
