@@ -29,21 +29,21 @@
 #include "zones.h"
 
 const watch_face_t watch_faces[] = {
-    // --- primary faces (indices 0-7) ---
+    // --- primary faces (indices 0-6) ---
     clock_face,
-    day_one_face,
     awake_face,
     step_counter_face,
     sunrise_sunset_face,
     nxtup_face,
-    temperature_display_face,
+    day_one_face,
     wyoscan_face,
-    // --- secondary faces / tools (indices 8-14, long-press Mode from face 0) ---
+    // --- secondary faces / tools (indices 7-14, long-press Mode from face 0) ---
     stebbs_face,
-    bubble_level_face,
-    tap_tempo_face,
     countdown_face,
     fast_stopwatch_face,
+    bubble_level_face,
+    tap_tempo_face,
+    temperature_display_face,
     tally_face,
     toss_up_face,
     // --- tertiary faces / settings+games (indices 15-22, really-long-press Mode from face 0) ---
@@ -60,36 +60,36 @@ const watch_face_t watch_faces[] = {
 const char *watch_face_names[] = {
     // primary
     "Clock",
-    "Day One",
     "Awake",
     "Step Counter",
     "Sunrise/Sunset",
     "Next Up",
-    "Temperature",
+    "Day One",
     "Wyo Scan",
     // secondary
     "Stebbs",
+    "Timer",
+    "Stopwatch",
     "Bubble Level",
     "Tap Tempo",
-    "Countdown",
-    "Stopwatch",
+    "Temperature",
     "Tally",
-    "Toss Up",
+    "Coins",
     // tertiary
     "Melody",
     "Chime",
     "Alarm",
     "Set Time",
     "Settings",
-    "Voltage",
+    "Battery",
     "Butterfly",
-    "Endless Runner",
+    "Runner",
 };
 
 #define MOVEMENT_NUM_FACES (sizeof(watch_faces) / sizeof(watch_face_t))
 
 /* Index of the first secondary (tools) face. Long-press Mode jumps here from face 0. */
-#define MOVEMENT_SECONDARY_FACE_INDEX 8
+#define MOVEMENT_SECONDARY_FACE_INDEX 7
 
 /* Index of the first tertiary (games) face. Really-long-press Mode jumps here from face 0. */
 #define MOVEMENT_TERTIARY_FACE_INDEX 15
