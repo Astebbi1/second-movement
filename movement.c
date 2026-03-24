@@ -54,6 +54,11 @@
 #if __EMSCRIPTEN__
 #include <emscripten.h>
 void _wake_up_simulator(void);
+EMSCRIPTEN_KEEPALIVE
+const char *movement_get_current_face_name(void) {
+    extern const char *watch_face_names[];
+    return watch_face_names[movement_state.current_face_idx];
+}
 #else
 #include "watch_usb_cdc.h"
 #endif

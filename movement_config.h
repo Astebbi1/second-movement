@@ -57,6 +57,35 @@ const watch_face_t watch_faces[] = {
     endless_runner_face,
 };
 
+const char *watch_face_names[] = {
+    // primary
+    "Clock",
+    "Day One",
+    "Awake",
+    "Step Counter",
+    "Sunrise/Sunset",
+    "Next Up",
+    "Temperature",
+    "Wyo Scan",
+    // secondary
+    "Stebbs",
+    "Bubble Level",
+    "Tap Tempo",
+    "Countdown",
+    "Stopwatch",
+    "Tally",
+    "Toss Up",
+    // tertiary
+    "Melody",
+    "Chime",
+    "Alarm",
+    "Set Time",
+    "Settings",
+    "Voltage",
+    "Butterfly",
+    "Endless Runner",
+};
+
 #define MOVEMENT_NUM_FACES (sizeof(watch_faces) / sizeof(watch_face_t))
 
 /* Index of the first secondary (tools) face. Long-press Mode jumps here from face 0. */

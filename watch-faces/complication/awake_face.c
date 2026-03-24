@@ -75,14 +75,17 @@ static void _awake_update_display(awake_state_t *state) {
         watch_display_text_with_fallback(WATCH_POSITION_TOP, "SLEPT", "SL");
         elapsed = state->prev_sleep_seconds;
         watch_clear_indicator(WATCH_INDICATOR_SLEEP);
+        watch_clear_indicator(WATCH_INDICATOR_SIGNAL);
     } else if (state->mode == AWAKE_MODE_AWAKE) {
         watch_display_text_with_fallback(WATCH_POSITION_TOP, "AWAKE", "AW");
         elapsed = (now > state->mode_start_epoch) ? (now - state->mode_start_epoch) : 0;
         watch_clear_indicator(WATCH_INDICATOR_SLEEP);
+        watch_set_indicator(WATCH_INDICATOR_SIGNAL);
     } else {
         watch_display_text_with_fallback(WATCH_POSITION_TOP, "SLEEP", "SL");
         elapsed = (now > state->mode_start_epoch) ? (now - state->mode_start_epoch) : 0;
         watch_set_indicator(WATCH_INDICATOR_SLEEP);
+        watch_clear_indicator(WATCH_INDICATOR_SIGNAL);
     }
 
     uint16_t hours   = (uint16_t)(elapsed / 3600);
