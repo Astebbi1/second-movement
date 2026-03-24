@@ -218,7 +218,7 @@ uint8_t count_steps_espruino(lis2dw_fifo_t *fifo_data) {
     for (uint8_t i = 0; i < fifo_data->count; i++) {
         uint32_t magnitude = count_steps_approx_l2_norm(fifo_data->readings[i]);
         if (magnitude == 0) continue;
-        new_steps += count_steps_espruino_sample(magnitude << 1);
+        new_steps += count_steps_espruino_sample(magnitude << 3);
     }
     if (new_steps > MAX_SIMPLE_STEPS) new_steps = MAX_SIMPLE_STEPS;
     return new_steps;
