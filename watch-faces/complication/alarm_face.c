@@ -254,9 +254,9 @@ void alarm_face_setup(uint8_t watch_face_index, void **context_ptr) {
         state->alarm[1].pitch = 3;
         state->alarm[1].beeps = 5;  // Nickelodeon
         state->alarm[1].enabled = true;
-        // Alarm 3: 9:45am Sundays, Tetris melody
+        // Alarm 3: 9:45pm Sundays, Tetris melody
         state->alarm[2].day = 6;    // Sunday
-        state->alarm[2].hour = 9;
+        state->alarm[2].hour = 21;
         state->alarm[2].minute = 45;
         state->alarm[2].pitch = 3;
         state->alarm[2].beeps = 3;  // Tetris
