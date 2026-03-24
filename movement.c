@@ -54,11 +54,6 @@
 #if __EMSCRIPTEN__
 #include <emscripten.h>
 void _wake_up_simulator(void);
-EMSCRIPTEN_KEEPALIVE
-const char *movement_get_current_face_name(void) {
-    extern const char *watch_face_names[];
-    return watch_face_names[movement_state.current_face_idx];
-}
 #else
 #include "watch_usb_cdc.h"
 #endif
@@ -67,6 +62,14 @@ volatile movement_state_t movement_state;
 void * watch_face_contexts[MOVEMENT_NUM_FACES];
 watch_date_time_t scheduled_tasks[MOVEMENT_NUM_FACES];
 const int32_t movement_le_inactivity_deadlines[8] = {INT_MAX, 600, 3600, 7200, 21600, 43200, 86400, 604800};
+
+#if __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE
+const char *movement_get_current_face_name(void) {
+    extern const char *watch_face_names[];
+    return watch_face_names[movement_state.current_face_idx];
+}
+#endif
 const int16_t movement_timeout_inactivity_deadlines[4] = {60, 120, 300, 1800};
 
 const uint32_t _movement_mode_button_events_mask = 0b11111 << EVENT_MODE_BUTTON_DOWN;
