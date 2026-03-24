@@ -64,10 +64,10 @@ watch_date_time_t scheduled_tasks[MOVEMENT_NUM_FACES];
 const int32_t movement_le_inactivity_deadlines[8] = {INT_MAX, 600, 3600, 7200, 21600, 43200, 86400, 604800};
 
 #if __EMSCRIPTEN__
-EMSCRIPTEN_KEEPALIVE
-const char *movement_get_current_face_name(void) {
+static void _sim_push_face_name(void) {
     extern const char *watch_face_names[];
-    return watch_face_names[movement_state.current_face_idx];
+    EM_ASM({ window.currentFaceName = UTF8ToString($0); },
+           watch_face_names[movement_state.current_face_idx]);
 }
 #endif
 const int16_t movement_timeout_inactivity_deadlines[4] = {60, 120, 300, 1800};
@@ -1389,6 +1389,9 @@ void app_setup(void) {
 
         watch_faces[movement_state.current_face_idx].activate(watch_face_contexts[movement_state.current_face_idx]);
         movement_volatile_state.pending_events |=  1 << EVENT_ACTIVATE;
+#if __EMSCRIPTEN__
+        _sim_push_face_name();
+#endif
     }
 }
 
@@ -1454,6 +1457,9 @@ static bool _switch_face(void) {
     }
 
     wf->activate(watch_face_contexts[movement_state.current_face_idx]);
+#if __EMSCRIPTEN__
+    _sim_push_face_name();
+#endif
 
     movement_event_t event;
     event.subsecond = 0;
