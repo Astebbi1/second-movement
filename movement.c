@@ -1367,6 +1367,9 @@ void app_setup(void) {
             // If a watch face wants to check in on the A4 interrupt pin for motion status, it can call
             // movement_set_accelerometer_background_rate with another rate like LIS2DW_DATA_RATE_LOWEST or LIS2DW_DATA_RATE_25_HZ.
             lis2dw_set_data_rate(movement_state.accelerometer_background_rate);
+
+            // Start step counting immediately at boot — no face visit required.
+            movement_enable_step_count(false);
         }
 #endif
 
