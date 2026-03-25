@@ -40,6 +40,7 @@
 #include "alarm_face.h"
 #include "advanced_alarm_face.h"
 #include "countdown_face.h"
+#include "stebbs_countdown_face.h"
 #include "stopwatch_face.h"
 #include "fast_stopwatch_face.h"
 #include "sunrise_sunset_face.h"

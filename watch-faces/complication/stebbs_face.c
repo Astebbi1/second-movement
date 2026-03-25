@@ -103,6 +103,7 @@ void stebbs_face_activate(void *context) {
     stebbs_state_t *state = (stebbs_state_t *)context;
     state->tick_count = 0;
     state->flop_frame = 0;
+    state->scroll_pos = 0;
     _update_scroll_text(state);  // refresh time every time face is entered
     movement_request_tick_frequency(TICK_FREQUENCY);
 }

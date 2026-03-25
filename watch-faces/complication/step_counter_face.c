@@ -52,8 +52,21 @@ static uint16_t display_step_count_now(bool sensor_seen, bool in_low_batt) {
         watch_display_text_with_fallback(WATCH_POSITION_BOTTOM, "LoBatt", "1oBatt");
     } else {
         step_count = get_step_count();
-        sprintf(buf, "%6lu", step_count);
-        watch_display_text(WATCH_POSITION_BOTTOM, buf);
+        if (step_count < 10000) {
+            // Left-align in 4 chars, blank seconds — easy glance read
+            sprintf(buf, "%-4lu  ", step_count);
+            watch_display_text_with_fallback(WATCH_POSITION_BOTTOM, buf, buf);
+        } else if (step_count < 20000) {
+            // Custom LCD: leading-1 pixel + 4 digits + blank seconds = 7-char trigger
+            char fallback[10];
+            sprintf(buf, "1%04lu  ", step_count - 10000);
+            sprintf(fallback, "%6lu", step_count);
+            watch_display_text_with_fallback(WATCH_POSITION_BOTTOM, buf, fallback);
+        } else {
+            // High count: use all 6 digits right-aligned
+            sprintf(buf, "%6lu", step_count);
+            watch_display_text_with_fallback(WATCH_POSITION_BOTTOM, buf, buf);
+        }
     }
     return step_count;
 }

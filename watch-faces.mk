@@ -10,6 +10,7 @@ SRCS += \
   ./watch-faces/complication/advanced_alarm_face.c \
   ./watch-faces/complication/stebbs_face.c \
   ./watch-faces/complication/countdown_face.c \
+  ./watch-faces/complication/stebbs_countdown_face.c \
   ./watch-faces/complication/day_one_face.c \
   ./watch-faces/complication/interval_chime_face.c \
   ./watch-faces/complication/stock_stopwatch_face.c \

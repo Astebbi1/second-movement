@@ -39,7 +39,7 @@ const watch_face_t watch_faces[] = {
     wyoscan_face,
     // --- secondary faces / tools (indices 7-14, long-press Mode from face 0) ---
     stebbs_face,
-    countdown_face,
+    stebbs_countdown_face,
     fast_stopwatch_face,
     bubble_level_face,
     tap_tempo_face,
@@ -68,7 +68,7 @@ const char *watch_face_names[] = {
     "Wyo Scan",
     // secondary
     "Stebbs",
-    "Timer",
+    "Countdown",
     "Stopwatch",
     "Bubble Level",
     "Tap Tempo",
