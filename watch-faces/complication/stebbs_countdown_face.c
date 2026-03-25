@@ -214,8 +214,13 @@ bool stebbs_countdown_face_loop(movement_event_t event, void *context) {
 
         case EVENT_LIGHT_BUTTON_UP:
             if (state->mode == SCD_IDLE) {
-                // Cycle to next tune
+                // Cycle to next tune and play a preview
                 state->tune_idx = (state->tune_idx + 1) % SCD_NUM_TUNES;
+                const scd_tune_t *t = &_scd_tunes[state->tune_idx];
+                const int8_t *seq = t->is_signal
+                    ? signal_tunes[t->idx].sequence
+                    : melody_tunes[t->idx].sequence;
+                watch_buzzer_play_sequence((int8_t *)seq, NULL);
             } else {
                 // LED when running or paused
                 movement_illuminate_led();
