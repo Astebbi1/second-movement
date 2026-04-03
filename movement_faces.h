@@ -95,4 +95,8 @@
 #include "step_counter_face.h"
 #include "awake_face.h"
 #include "nxtup_face.h"
+#include "chess_clock_face.h"
+#include "active_countdown_face.h"
+#include "dice_face.h"
+#include "cook_face.h"
 // New includes go above this line.

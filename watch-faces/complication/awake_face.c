@@ -30,76 +30,179 @@
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-static uint32_t _awake_now_epoch(void) {
+static uint32_t _now_epoch(void) {
     return watch_utility_date_time_to_unix_time(movement_get_local_date_time(), 0);
 }
 
-static void _awake_check_activity(awake_state_t *state) {
-    uint32_t now = _awake_now_epoch();
-    uint32_t current_steps = movement_get_step_count();
-
-    bool new_steps = (current_steps > state->last_step_count);
-    state->last_step_count = current_steps;
-
-    if (new_steps) {
-        state->last_step_epoch = now;
-    }
-
-    uint32_t inactive_sec = (now > state->last_step_epoch)
-                            ? (now - state->last_step_epoch) : 0;
-
-    if (state->mode == AWAKE_MODE_AWAKE) {
-        if (inactive_sec >= AWAKE_SLEEP_THRESHOLD_SEC) {
-            state->prev_sleep_seconds = 0; // reset before new sleep period
-            state->mode = AWAKE_MODE_SLEEP;
-            state->mode_start_epoch = state->last_step_epoch;
-        }
-    } else {
-        if (new_steps) {
-            state->prev_sleep_seconds = (now > state->mode_start_epoch)
-                                        ? (now - state->mode_start_epoch) : 0;
-            state->mode = AWAKE_MODE_AWAKE;
-            state->mode_start_epoch = now;
-            state->show_prev_sleep = false;
-        }
-    }
+// Returns temperature in tenths of °C (e.g. 325 = 32.5°C).
+// Returns INT16_MIN if sensor unavailable.
+static int16_t _read_temp_tenths(void) {
+    float t = movement_get_temperature();
+    if (t > 1000.0f) return INT16_MIN; // sentinel for unavailable
+    return (int16_t)(t * 10.0f);
 }
 
-static void _awake_update_display(awake_state_t *state) {
-    char buf[5];
-    uint32_t now = _awake_now_epoch();
-    uint32_t elapsed;
-
-    if (state->show_prev_sleep && state->prev_sleep_seconds > 0) {
-        // Showing last sleep duration — use "SLEPT" so it's clearly history
-        watch_display_text_with_fallback(WATCH_POSITION_TOP, "SLEPT", "SL");
-        elapsed = state->prev_sleep_seconds;
-        watch_clear_indicator(WATCH_INDICATOR_SLEEP);
-        watch_clear_indicator(WATCH_INDICATOR_SIGNAL);
-    } else if (state->mode == AWAKE_MODE_AWAKE) {
-        watch_display_text_with_fallback(WATCH_POSITION_TOP, "AWAKE", "AW");
-        elapsed = (now > state->mode_start_epoch) ? (now - state->mode_start_epoch) : 0;
-        watch_clear_indicator(WATCH_INDICATOR_SLEEP);
-        watch_set_indicator(WATCH_INDICATOR_SIGNAL);
-    } else {
-        watch_display_text_with_fallback(WATCH_POSITION_TOP, "SLEEP", "SL");
-        elapsed = (now > state->mode_start_epoch) ? (now - state->mode_start_epoch) : 0;
-        watch_set_indicator(WATCH_INDICATOR_SLEEP);
-        watch_clear_indicator(WATCH_INDICATOR_SIGNAL);
+// Exponential moving average over up to 8 samples.
+static void _update_wrist_temp(awake_state_t *state, int16_t temp) {
+    if (state->wrist_temp_samples == 0) {
+        state->wrist_temp_avg = temp;
+        state->wrist_temp_samples = 1;
+        return;
     }
+    if (state->wrist_temp_samples < 8) state->wrist_temp_samples++;
+    // new_avg = old * 7/8 + temp * 1/8
+    state->wrist_temp_avg = (int16_t)((state->wrist_temp_avg * 7 + temp + 4) / 8);
+}
 
-    uint16_t hours   = (uint16_t)(elapsed / 3600);
-    uint8_t  minutes = (uint8_t)((elapsed % 3600) / 60);
-    if (hours > 99) hours = 99;
+// True if current temp has dropped far enough below the wrist baseline.
+static bool _is_off_wrist(awake_state_t *state, int16_t temp) {
+    if (state->wrist_temp_samples < 3) return false; // no baseline yet
+    if (temp == INT16_MIN) return false;
+    return (state->wrist_temp_avg - temp) >= AWAKE_OFFWRIST_TEMP_TENTHS;
+}
 
-    snprintf(buf, sizeof(buf), "%02u%02u", hours, minutes);
+// ─── display ─────────────────────────────────────────────────────────────────
+
+static void _show_duration(uint32_t seconds) {
+    char buf[5];
+    uint16_t h = (uint16_t)(seconds / 3600);
+    uint8_t  m = (uint8_t)((seconds % 3600) / 60);
+    if (h > 99) h = 99;
     watch_set_colon();
+    snprintf(buf, sizeof(buf), "%02u%02u", h, m);
     watch_display_text(WATCH_POSITION_HOURS,   buf);
     watch_display_text(WATCH_POSITION_MINUTES, buf + 2);
     watch_display_text(WATCH_POSITION_SECONDS, "  ");
 }
 
-// ─── face callbacks ───────────────────────────────────────────────────────────
+static void _awake_update_display(awake_state_t *state) {
+    uint32_t now = _now_epoch();
+
+    if (state->mode == AWAKE_STATE_OFF_WRIST) {
+        watch_clear_indicator(WATCH_INDICATOR_SLEEP);
+        watch_display_text_with_fallback(WATCH_POSITION_TOP, "OFF  ", "OF");
+        watch_display_text(WATCH_POSITION_BOTTOM, "WrISt ");
+        return;
+    }
+
+    if (state->show_sleep) {
+        watch_clear_indicator(WATCH_INDICATOR_SLEEP);
+        watch_display_text_with_fallback(WATCH_POSITION_TOP, "SLEPT", "SL");
+        if (state->last_sleep_seconds > 0) {
+            _show_duration(state->last_sleep_seconds);
+        } else {
+            watch_display_text(WATCH_POSITION_BOTTOM, " none ");
+        }
+        return;
+    }
+
+    if (state->mode == AWAKE_STATE_ASLEEP) {
+        watch_set_indicator(WATCH_INDICATOR_SLEEP);
+        watch_display_text_with_fallback(WATCH_POSITION_TOP, "SLEEP", "SL");
+        uint32_t elapsed = (now > state->sleep_start_epoch)
+                           ? (now - state->sleep_start_epoch) : 0;
+        _show_duration(elapsed);
+    } else {
+        // AWAKE or MAYBE_SLEEPING — show awake duration
+        watch_clear_indicator(WATCH_INDICATOR_SLEEP);
+        watch_display_text_with_fallback(WATCH_POSITION_TOP, "AWAKE", "AW");
+        uint32_t elapsed = (now > state->wake_epoch)
+                           ? (now - state->wake_epoch) : 0;
+        _show_duration(elapsed);
+    }
+}
+
+// ─── poll logic ──────────────────────────────────────────────────────────────
+
+static void _do_poll(awake_state_t *state) {
+    uint32_t now = _now_epoch();
+    int16_t  temp = _read_temp_tenths();
+    uint32_t steps = movement_get_step_count();
+    bool had_motion = (steps > state->last_step_count);
+    state->last_step_count = steps;
+
+    // --- Off-wrist detection ---
+    if (_is_off_wrist(state, temp)) {
+        if (state->mode != AWAKE_STATE_OFF_WRIST) {
+            // Finalise any in-progress confirmed sleep before removing
+            if (state->mode == AWAKE_STATE_ASLEEP) {
+                uint32_t dur = (now > state->sleep_start_epoch)
+                               ? (now - state->sleep_start_epoch) : 0;
+                if (dur >= AWAKE_MIN_SLEEP_SEC)
+                    state->last_sleep_seconds = dur;
+            }
+            state->mode = AWAKE_STATE_OFF_WRIST;
+            state->still_poll_count = 0;
+        }
+        return;
+    }
+
+    // --- Returning from off-wrist ---
+    if (state->mode == AWAKE_STATE_OFF_WRIST) {
+        state->mode = AWAKE_STATE_AWAKE;
+        state->wake_epoch = now;
+        state->still_poll_count = 0;
+        // Don't update wrist temp yet — wait for it to stabilise
+        return;
+    }
+
+    // --- Update wrist temp baseline (only when clearly on wrist) ---
+    if (temp != INT16_MIN) {
+        _update_wrist_temp(state, temp);
+    }
+
+    // --- Motion / stillness ---
+    if (had_motion) {
+        // Reset stillness counter in all cases
+        state->still_poll_count = 0;
+        if (state->mode == AWAKE_STATE_MAYBE_SLEEPING)
+            state->mode = AWAKE_STATE_AWAKE;
+
+        if (state->mode == AWAKE_STATE_ASLEEP) {
+            // Accumulate active polls — need AWAKE_WAKE_POLLS consecutive to confirm wake
+            if (state->active_poll_count == 0)
+                state->first_active_epoch = now - (AWAKE_POLL_MINUTES * 60UL);
+            state->active_poll_count++;
+
+            if (state->active_poll_count >= AWAKE_WAKE_POLLS) {
+                // Sustained motion confirmed — finalise sleep, backdate wake to first active poll
+                uint32_t sleep_end = state->first_active_epoch;
+                uint32_t dur = (sleep_end > state->sleep_start_epoch)
+                               ? (sleep_end - state->sleep_start_epoch) : 0;
+                if (dur >= AWAKE_MIN_SLEEP_SEC)
+                    state->last_sleep_seconds = dur;
+                state->mode             = AWAKE_STATE_AWAKE;
+                state->wake_epoch       = state->first_active_epoch;
+                state->active_poll_count = 0;
+            }
+        } else {
+            state->active_poll_count = 0;
+        }
+
+    } else {
+        // No motion — reset wake counter so brief trips (bathroom, shifting) don't accumulate
+        state->active_poll_count = 0;
+        if (state->mode == AWAKE_STATE_AWAKE ||
+            state->mode == AWAKE_STATE_MAYBE_SLEEPING) {
+
+            if (state->still_poll_count == 0) {
+                // Record when stillness started (backdate by one poll interval)
+                state->still_since_epoch = now - (AWAKE_POLL_MINUTES * 60UL);
+                state->mode = AWAKE_STATE_MAYBE_SLEEPING;
+            }
+            state->still_poll_count++;
+
+            if (state->still_poll_count >= AWAKE_SLEEP_POLLS) {
+                // Enough consecutive still polls — confirm sleep
+                state->mode = AWAKE_STATE_ASLEEP;
+                state->sleep_start_epoch = state->still_since_epoch;
+            }
+        }
+        // If already AWAKE_STATE_ASLEEP: stay asleep, nothing to do
+    }
+}
+
+// ─── face callbacks ──────────────────────────────────────────────────────────
 
 void awake_face_setup(uint8_t watch_face_index, void **context_ptr) {
     (void) watch_face_index;
@@ -108,31 +211,22 @@ void awake_face_setup(uint8_t watch_face_index, void **context_ptr) {
         awake_state_t *state = (awake_state_t *)*context_ptr;
         memset(state, 0, sizeof(awake_state_t));
 
-        uint32_t now = _awake_now_epoch();
-        state->mode = AWAKE_MODE_AWAKE;
-        state->mode_start_epoch = now;
-        state->last_step_epoch  = now;
-        state->last_step_count  = 0;
+        uint32_t now = _now_epoch();
+        state->mode       = AWAKE_STATE_AWAKE;
+        state->wake_epoch = now;
+
+        int16_t temp = _read_temp_tenths();
+        if (temp != INT16_MIN) {
+            state->wrist_temp_avg     = temp;
+            state->wrist_temp_samples = 1;
+        }
     }
 }
 
 void awake_face_activate(void *context) {
     awake_state_t *state = (awake_state_t *)context;
-
-    // Guard against stale epoch stored before the RTC was set.
-    uint32_t now = _awake_now_epoch();
-    if (now > state->mode_start_epoch && (now - state->mode_start_epoch) > 86400) {
-        state->mode              = AWAKE_MODE_AWAKE;
-        state->mode_start_epoch  = now;
-        state->last_step_epoch   = now;
-        state->last_step_count   = 0;
-        state->prev_sleep_seconds = 0;
-        state->show_prev_sleep   = false;
-    }
-
-    state->last_step_count = movement_get_step_count();
-    _awake_check_activity(state);
-    movement_request_tick_frequency(1);
+    state->show_sleep = false;
+    _awake_update_display(state);
 }
 
 bool awake_face_loop(movement_event_t event, void *context) {
@@ -145,28 +239,35 @@ bool awake_face_loop(movement_event_t event, void *context) {
             break;
 
         case EVENT_BACKGROUND_TASK:
-            _awake_check_activity(state);
+            _do_poll(state);
             break;
 
         case EVENT_ALARM_BUTTON_UP:
-            // Toggle showing last sleep duration vs. current mode time
-            if (state->prev_sleep_seconds > 0) {
-                state->show_prev_sleep = !state->show_prev_sleep;
-            } else {
-                state->show_prev_sleep = false;
-            }
+            // Toggle between current-mode view and last sleep duration
+            if (state->last_sleep_seconds > 0)
+                state->show_sleep = !state->show_sleep;
             _awake_update_display(state);
             break;
 
         case EVENT_ALARM_LONG_PRESS:
-            // Manual "I just woke up" — reset awake timer to right now
-            state->mode             = AWAKE_MODE_AWAKE;
-            state->mode_start_epoch = _awake_now_epoch();
-            state->last_step_epoch  = state->mode_start_epoch;
-            state->last_step_count  = movement_get_step_count();
-            state->show_prev_sleep  = false;
+            // Manual "I just woke up"
+            state->mode             = AWAKE_STATE_AWAKE;
+            state->wake_epoch       = _now_epoch();
+            state->still_poll_count = 0;
+            state->show_sleep       = false;
             _awake_update_display(state);
             break;
+
+        case EVENT_LIGHT_LONG_PRESS:
+            // "Still awake" dead man's switch — resets stillness counter
+            state->still_poll_count = 0;
+            if (state->mode == AWAKE_STATE_MAYBE_SLEEPING)
+                state->mode = AWAKE_STATE_AWAKE;
+            _awake_update_display(state);
+            break;
+
+        case EVENT_LIGHT_BUTTON_DOWN:
+            break; // suppress LED
 
         default:
             return movement_default_loop_handler(event);
@@ -182,6 +283,7 @@ void awake_face_resign(void *context) {
 movement_watch_face_advisory_t awake_face_advise(void *context) {
     (void) context;
     movement_watch_face_advisory_t advisory = { 0 };
-    advisory.wants_background_task = true;
+    watch_date_time_t dt = movement_get_local_date_time();
+    advisory.wants_background_task = (dt.unit.minute % AWAKE_POLL_MINUTES == 0);
     return advisory;
 }

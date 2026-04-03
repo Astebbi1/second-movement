@@ -34,7 +34,75 @@
 
 static const char heads[] = { '8', 'h', '4', 'E', '(' };
 static const char tails[] = { '0', '+', 'N', '3', ')' };
-static const uint8_t dd[] = {2, 4, 6, 8, 10,12,20,24,30,32,36,48,99}; 
+static const uint8_t dd[] = {2, 4, 6, 8, 10,12,20,24,30,32,36,48,99};
+
+/* --- Sound effects ---
+ * Duration unit = TC0 ticks at ~64 Hz (~15 ms each).
+ *
+ * Coin roll: fast high-pitched ticks decelerating like a spinning coin (~870 ms).
+ * Fits within the 39-tick × (1/32 s) = ~1.22 s coin animation.
+ * The sequence ends naturally before case 39, leaving silence for the result note.
+ */
+static int8_t _coin_roll_seq[] = {
+    BUZZER_NOTE_C6, 1,  BUZZER_NOTE_REST, 1,   /* fast rattle   */
+    BUZZER_NOTE_C6, 1,  BUZZER_NOTE_REST, 1,
+    BUZZER_NOTE_C6, 1,  BUZZER_NOTE_REST, 1,
+    BUZZER_NOTE_B5, 1,  BUZZER_NOTE_REST, 2,
+    BUZZER_NOTE_B5, 1,  BUZZER_NOTE_REST, 2,
+    BUZZER_NOTE_A5, 2,  BUZZER_NOTE_REST, 2,
+    BUZZER_NOTE_A5, 2,  BUZZER_NOTE_REST, 3,   /* slowing       */
+    BUZZER_NOTE_G5, 2,  BUZZER_NOTE_REST, 3,
+    BUZZER_NOTE_G5, 3,  BUZZER_NOTE_REST, 4,
+    BUZZER_NOTE_F5, 3,  BUZZER_NOTE_REST, 4,
+    BUZZER_NOTE_E5, 4,  BUZZER_NOTE_REST, 5,   /* nearly still  */
+    BUZZER_NOTE_D5, 4,  BUZZER_NOTE_REST, 5,
+    0
+};
+
+/* Dice roll: 5 descending notes followed by a pause (~435 ms).
+ * Fits within the 11-tick × (1/16 s) = ~687 ms dice animation;
+ * silence for the last ~250 ms before the result note fires at case 11. */
+static int8_t _dice_roll_seq[] = {
+    BUZZER_NOTE_G5, 3,
+    BUZZER_NOTE_E5, 3,
+    BUZZER_NOTE_C5, 4,
+    BUZZER_NOTE_G4, 4,
+    BUZZER_NOTE_E4, 5,
+    BUZZER_NOTE_REST, 10,  /* ~150 ms pause */
+    0
+};
+
+/* Result notes for die faces 1–6: C-major arpeggio ascending over two octaves.
+ * Low for 1, high for 6. For dice with > 6 sides, wraps modulo 6. */
+static const int8_t _dice_result_notes[6] = {
+    BUZZER_NOTE_C4,   /* 1 */
+    BUZZER_NOTE_E4,   /* 2 */
+    BUZZER_NOTE_G4,   /* 3 */
+    BUZZER_NOTE_C5,   /* 4 */
+    BUZZER_NOTE_E5,   /* 5 */
+    BUZZER_NOTE_G5,   /* 6 */
+};
+
+static void _play_coin_result(toss_up_state_t *state) {
+    uint8_t heads_count = 0;
+    for (uint8_t i = 0; i < state->coin_num; i++) {
+        if (state->coins[i]) heads_count++;
+    }
+    watch_buzzer_abort_sequence();
+    /* Heads majority → high note (right-side result).
+     * Tails majority → low note (left-side result). */
+    if (heads_count * 2 >= state->coin_num) {
+        watch_buzzer_play_note(BUZZER_NOTE_C6, 300);
+    } else {
+        watch_buzzer_play_note(BUZZER_NOTE_C3, 300);
+    }
+}
+
+static void _play_dice_result(toss_up_state_t *state) {
+    uint8_t idx = (uint8_t)((state->dice[0] - 1) % 6);
+    watch_buzzer_abort_sequence();
+    watch_buzzer_play_note((watch_buzzer_note_t)_dice_result_notes[idx], 300);
+}
 
 static void _roll_dice_multiple(char* result, uint8_t* dice, uint8_t num_dice);
 static void _sort_coins(char* token, uint8_t num_bits, uint8_t bits, char* heads, char* tails);
@@ -102,6 +170,7 @@ bool toss_up_face_loop(movement_event_t event, void *context) {
                     for (i = 0; i < state->coin_num; i++) {
                         state->coins[i] = divine_bit();
                     }
+                    watch_buzzer_play_sequence(_coin_roll_seq, NULL);
                     break;
                 case 2:
                     state->mode++;
@@ -112,6 +181,7 @@ bool toss_up_face_loop(movement_event_t event, void *context) {
                     for (i = 0; i < state->dice_num; i++) {
                         state->dice[i] = roll_dice(state->dice_sides[i]);
                     }
+                    watch_buzzer_play_sequence(_dice_roll_seq, NULL);
                     break;
                 default:
                     break;
@@ -180,6 +250,7 @@ bool toss_up_face_loop(movement_event_t event, void *context) {
 void toss_up_face_resign(void *context) {
     (void) context;
     watch_clear_indicator(WATCH_INDICATOR_BELL);
+    watch_buzzer_abort_sequence();
 }
 
 // STATIC FUNCTIONS ///////////////////////////////////////////////////////////
@@ -681,6 +752,7 @@ static void _coin_animation(toss_up_state_t *state) {
             state->animation = 0;
             movement_request_tick_frequency(1);
             watch_clear_indicator(WATCH_INDICATOR_BELL);
+            _play_coin_result(state);
     }
 }
 
@@ -794,5 +866,6 @@ static void _dice_animation(toss_up_state_t *state) {
             state->animation = 0;
             movement_request_tick_frequency(1);
             watch_clear_indicator(WATCH_INDICATOR_BELL);
+            _play_dice_result(state);
     }
 }

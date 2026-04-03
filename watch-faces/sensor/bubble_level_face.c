@@ -64,57 +64,70 @@ static void _read_accel(bubble_level_state_t *state) {
     state->smoothed_y = (int16_t)((state->smoothed_y * 3 + new_y) / 4);
 }
 
-static void _update_display(bubble_level_state_t *state) {
-    // Select active axis
-    int16_t reading = state->use_y_axis ? state->smoothed_y : state->smoothed_x;
-
-    // Clamp to ±TILT_SCALE then map to position 0–5.
-    // Formula: pos = (reading + TILT_SCALE) * 6 / (2 * TILT_SCALE)
-    // At reading=0 → pos=3 (center); at ±TILT_SCALE → pos=0/6 (clamped to 5).
-    int32_t clamped = reading;
-    if (clamped < -TILT_SCALE) clamped = -TILT_SCALE;
-    if (clamped >  TILT_SCALE) clamped =  TILT_SCALE;
-    uint8_t pos = (uint8_t)((clamped + TILT_SCALE) * 6 / (2 * TILT_SCALE));
+/* Map a raw reading to a 0-5 position for the 1D 6-char rail. */
+static uint8_t _to_6pos(int16_t reading) {
+    int32_t c = reading;
+    if (c < -TILT_SCALE) c = -TILT_SCALE;
+    if (c >  TILT_SCALE) c =  TILT_SCALE;
+    uint8_t pos = (uint8_t)((c + TILT_SCALE) * 6 / (2 * TILT_SCALE));
     if (pos > 5) pos = 5;
+    return pos;
+}
 
-    bool is_level = (reading > -LEVEL_THRESHOLD && reading < LEVEL_THRESHOLD);
+/* Map a raw reading to a 0-2 position for a 3-char half-rail (2D mode). */
+static uint8_t _to_3pos(int16_t reading) {
+    if (reading < -LEVEL_THRESHOLD) return 0;
+    if (reading >  LEVEL_THRESHOLD) return 2;
+    return 1;
+}
 
-    // Build 6-char bottom row: dashes for rail, bubble char at pos.
-    char rail[7];
-    memset(rail, '-', 6);
-    rail[6] = '\0';
+static void _update_display(bubble_level_state_t *state) {
+    bool flash = (state->tick_count % 4 < 2);
+    char bot[7] = "------";
 
-    if (is_level) {
-        // Flash bubble between '0' (ring, no middle bar) and '8' (all segments)
-        rail[pos] = (state->tick_count % 4 < 2) ? '8' : '0';
+    bool x_level = (state->smoothed_x > -LEVEL_THRESHOLD && state->smoothed_x < LEVEL_THRESHOLD);
+    bool y_level = (state->smoothed_y > -LEVEL_THRESHOLD && state->smoothed_y < LEVEL_THRESHOLD);
+
+    if (state->mode == BUBBLE_MODE_2D) {
+        /* Left half (chars 0-2): Y axis (front/back tilt).
+         * Right half (chars 3-5): X axis (left/right tilt).
+         * Bubble at center of each half = both axes level. */
+        uint8_t yp = _to_3pos(state->smoothed_y);
+        uint8_t xp = _to_3pos(state->smoothed_x);
+        bot[yp]     = (y_level && flash) ? '8' : '0';
+        bot[3 + xp] = (x_level && flash) ? '8' : '0';
+        watch_display_text_with_fallback(WATCH_POSITION_TOP, "2dLvL", "2d");
     } else {
-        rail[pos] = '0';
+        /* 1D mode: single bubble across 6-char rail. */
+        int16_t reading = (state->mode == BUBBLE_MODE_Y) ? state->smoothed_y : state->smoothed_x;
+        bool is_level   = (state->mode == BUBBLE_MODE_Y) ? y_level : x_level;
+        uint8_t pos = _to_6pos(reading);
+        bot[pos] = (is_level && flash) ? '8' : '0';
+        const char *top_1d = (state->mode == BUBBLE_MODE_Y) ? "LvL Y" : "LvL X";
+        const char *top_fb = (state->mode == BUBBLE_MODE_Y) ? "LvY"   : "LvX";
+        watch_display_text_with_fallback(WATCH_POSITION_TOP, top_1d, top_fb);
+        x_level = y_level = is_level;  /* reuse combined check below */
     }
 
-    watch_display_text(WATCH_POSITION_BOTTOM, rail);
+    watch_display_text(WATCH_POSITION_BOTTOM, bot);
 
-    // Indicators and feedback when level
-    if (is_level) {
-        // Keep LED green
+    bool both_level = x_level && y_level;
+
+    if (both_level) {
         if (!state->led_enabled) {
             watch_enable_leds();
             state->led_enabled = true;
         }
         watch_set_led_color_rgb(0, 255, 0);
-
-        // Flash SIGNAL indicator in sync with bubble
-        if (state->tick_count % 4 < 2) {
+        if (flash) {
             watch_set_indicator(WATCH_INDICATOR_SIGNAL);
         } else {
             watch_clear_indicator(WATCH_INDICATOR_SIGNAL);
         }
-
-        // Beep once per second (every TICK_FREQ ticks)
         if (state->tick_count % TICK_FREQ == 0) {
             watch_buzzer_play_sequence(_level_beep, NULL);
         }
     } else {
-        // Turn off LED
         if (state->led_enabled) {
             watch_set_led_off();
             watch_disable_leds();
@@ -131,7 +144,7 @@ void bubble_level_face_setup(uint8_t watch_face_index, void **context_ptr) {
     if (*context_ptr == NULL) {
         *context_ptr = malloc(sizeof(bubble_level_state_t));
         memset(*context_ptr, 0, sizeof(bubble_level_state_t));
-        ((bubble_level_state_t *)*context_ptr)->use_y_axis = true;
+        ((bubble_level_state_t *)*context_ptr)->mode = BUBBLE_MODE_Y;
     }
 }
 
@@ -154,21 +167,22 @@ bool bubble_level_face_loop(movement_event_t event, void *context) {
     switch (event.event_type) {
         case EVENT_ACTIVATE:
             watch_clear_colon();
-            watch_display_text_with_fallback(WATCH_POSITION_TOP, "LEVEL", "LvL");
             watch_display_text(WATCH_POSITION_BOTTOM, "------");
             break;
 
         case EVENT_TICK:
-            watch_display_text_with_fallback(WATCH_POSITION_TOP, "LEVEL", "LvL");
             _read_accel(state);
             _update_display(state);
             break;
 
         case EVENT_ALARM_BUTTON_UP:
-            // Toggle between X and Y axis for different holding orientations
-            state->use_y_axis = !state->use_y_axis;
-            // Brief visual confirmation: show which axis is now active
-            watch_display_text(WATCH_POSITION_BOTTOM, state->use_y_axis ? "  Y   " : "  X   ");
+            /* Cycle X → Y → 2D → X */
+            state->mode = (bubble_mode_t)((state->mode + 1) % 3);
+            switch (state->mode) {
+                case BUBBLE_MODE_X:  watch_display_text(WATCH_POSITION_BOTTOM, "  X   "); break;
+                case BUBBLE_MODE_Y:  watch_display_text(WATCH_POSITION_BOTTOM, "  Y   "); break;
+                case BUBBLE_MODE_2D: watch_display_text(WATCH_POSITION_BOTTOM, " Y  X "); break;
+            }
             break;
 
         case EVENT_LIGHT_BUTTON_UP:
@@ -185,8 +199,7 @@ bool bubble_level_face_loop(movement_event_t event, void *context) {
             break;
 
         case EVENT_LOW_ENERGY_UPDATE:
-            // Low energy: show static label, no accelerometer drain
-            watch_display_text_with_fallback(WATCH_POSITION_TOP, "LEVEL", "LvL");
+            watch_display_text_with_fallback(WATCH_POSITION_TOP, "LvL  ", "LvL");
             watch_display_text(WATCH_POSITION_BOTTOM, "--LvL-");
             break;
 

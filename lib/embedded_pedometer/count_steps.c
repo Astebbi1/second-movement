@@ -120,8 +120,8 @@ typedef enum {
 #define T_MIN_STEP    4
 #define T_MAX_STEP   16
 #define X_STEPS       6
-#define RAW_THRESHOLD 24
-#define N_ACTIVE_SAMPLES 5
+#define RAW_THRESHOLD 31
+#define N_ACTIVE_SAMPLES 7
 
 static StepState stepState;
 static unsigned char holdSteps;

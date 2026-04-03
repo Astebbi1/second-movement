@@ -49,11 +49,17 @@
 
 #include "movement.h"
 
+typedef enum {
+    BUBBLE_MODE_X  = 0,   // 1D level on X axis (left/right tilt)
+    BUBBLE_MODE_Y  = 1,   // 1D level on Y axis (front/back tilt)
+    BUBBLE_MODE_2D = 2,   // 2D level: left half = Y, right half = X
+} bubble_mode_t;
+
 typedef struct {
     int16_t smoothed_x;    // low-pass filtered X reading
     int16_t smoothed_y;    // low-pass filtered Y reading
     uint8_t tick_count;    // wrapping tick counter (for flash/beep timing)
-    bool use_y_axis;       // false=X axis (default), true=Y axis
+    bubble_mode_t mode;    // current display mode
     bool led_enabled;      // tracks whether we called watch_enable_leds
 } bubble_level_state_t;
 

@@ -120,7 +120,7 @@ static void _build_scroll_string(nxtup_state_t *state) {
     uint8_t  dow = (uint8_t)((event_jdn + 1) % 7);
 
     snprintf(state->scroll_buf, sizeof(state->scroll_buf),
-             "%s %s %s %u  ",
+             "   %s %s %s %u  ",
              ev->name,
              _nxtup_dow_names[dow],
              _nxtup_month_names[ev->month],
@@ -175,7 +175,7 @@ void nxtup_face_activate(void *context) {
     _build_sorted_list(state);
     state->current_idx = 0;
     _build_scroll_string(state);
-    movement_request_tick_frequency(2); // 2 Hz for smooth scrolling
+    movement_request_tick_frequency(4); // 4 Hz — matches stebbs_face scroll speed
 }
 
 bool nxtup_face_loop(movement_event_t event, void *context) {

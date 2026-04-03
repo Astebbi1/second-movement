@@ -165,13 +165,12 @@ bool day_one_face_loop(movement_event_t event, void *context) {
                         watch_display_text(WATCH_POSITION_MINUTES, buf);
                     }
                     break;
-                // otherwise, check if we have to update. the display only needs to change at midnight!
-                case DAY_ONE_PAGE_DISPLAY: {
-                    watch_date_time_t date_time = watch_rtc_get_date_time();
-                    if (date_time.unit.hour == 0 &&  date_time.unit.minute == 0 && date_time.unit.second == 0) {
-                        _day_one_face_update(state);
-                    }
-                    break;}
+                // Update every tick so the count is always correct if the face
+                // is left on across midnight (the old second==0 check could miss
+                // the midnight tick and leave a stale count until next activation).
+                case DAY_ONE_PAGE_DISPLAY:
+                    _day_one_face_update(state);
+                    break;
                 case DAY_ONE_PAGE_DATE:
                     if (state->ticks > 0) {
                         state->ticks--;

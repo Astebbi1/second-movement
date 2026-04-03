@@ -34,15 +34,17 @@
 // Flop advances every 2 ticks → 4 steps/sec, 8-frame cycle = 2 sec/swing
 #define FLOP_DIVISOR       2
 
-// 3 leading/trailing spaces — enough to separate repeats without excess pause
-// Full text: "   StEbbS WAtCH  MON Feb 23   " = 30 chars
-#define SCROLL_CONTENT_LEN 30
+// 5 leading / 3 trailing spaces — extra lead-in so text doesn't appear abruptly
+// Full text: "     StEbbS WAtCH  MON Feb 23   " = 32 chars
+#define SCROLL_CONTENT_LEN 32
 
-// Pendulum flop animation: all 4 top positions show the same character,
-// bouncing through a rotation: l → / → - → \ → 1 → \ → - → / → l ...
+// Wave animation: each of the 4 top positions is offset by 2 frames in the
+// cycle, so the rotation flows left-to-right across the top rather than all
+// positions moving in lockstep.
 // l = left vertical (E+F), / = forward slash (B+E), - = middle bar (G),
 // \ = backslash (C+F), 1 = right vertical (B+C)
-#define FLOP_CYCLE_LEN  8
+#define FLOP_CYCLE_LEN   8
+#define FLOP_WAVE_OFFSET 2   // frame offset between adjacent top positions
 static const char flop_seq[FLOP_CYCLE_LEN] = {'l', '/', '-', '\\', '1', '\\', '-', '/'};
 
 // Day-of-week abbreviations (0=Monday...6=Sunday)
@@ -65,17 +67,18 @@ static uint8_t _stebbs_dow(watch_date_time_t dt) {
 static void _update_scroll_text(stebbs_state_t *state) {
     watch_date_time_t date_time = movement_get_local_date_time();
     uint8_t dow = _stebbs_dow(date_time);
-    // 3 leading + "StEbbS WAtCH  " (14) + dow (3) + " " + month (3) + " " + day (2) + 3 trailing = 30 chars
-    sprintf(state->scroll_text, "   StEbbS WAtCH  %s %s %2d   ",
+    // 5 leading + "StEbbS WAtCH  " (14) + dow (3) + " " + month (3) + " " + day (2) + 3 trailing = 32 chars
+    sprintf(state->scroll_text, "     StEbbS WAtCH  %s %s %2d   ",
             _stebbs_dow_names[dow], _stebbs_month_names[date_time.unit.month], date_time.unit.day);
 }
 
 static void _stebbs_display(stebbs_state_t *state) {
     char display_buf[11];
 
-    // Top 4 positions: all show the same flop character simultaneously
-    char flop_ch = flop_seq[state->flop_frame];
-    for (int i = 0; i < 4; i++) display_buf[i] = flop_ch;
+    // Top 4 positions: wave — each offset by FLOP_WAVE_OFFSET frames
+    for (int i = 0; i < 4; i++) {
+        display_buf[i] = flop_seq[(state->flop_frame + i * FLOP_WAVE_OFFSET) % FLOP_CYCLE_LEN];
+    }
 
     // Bottom 6 positions: scrolling text
     for (int i = 0; i < 6; i++) {

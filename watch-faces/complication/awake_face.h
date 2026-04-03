@@ -26,47 +26,65 @@
 #define AWAKE_FACE_H_
 
 /*
- * AWAKE face — sleep/wake tracker using step counting
- * ====================================================
- * Detects awake vs. sleep state based on accelerometer step activity.
- * After AWAKE_SLEEP_THRESHOLD_MINUTES of no steps, transitions to SLEEP mode.
- * Any new steps while in SLEEP mode transitions back to AWAKE.
+ * AWAKE face — sleep/wake tracker v2
+ * ====================================
+ * Polls every 20 minutes via background task. Uses step count delta and
+ * wrist temperature together to detect sleep, waking, and watch removal.
  *
- * AWAKE mode:
- *   Top: "AWAKE"    Bottom: HH:MM time since waking
+ * SLEEP detection:
+ *   After AWAKE_SLEEP_POLLS consecutive still polls (~100 min), confirms sleep
+ *   and backdates sleep start to when stillness began. Ignores sleep blocks
+ *   shorter than AWAKE_MIN_SLEEP_SEC (filters naps / desk vegging).
  *
- * SLEEP mode:
- *   Top: "SLEEP"    Bottom: HH:MM time sleeping    Crescent moon ON
+ * WAKE detection:
+ *   Any poll with step count increase while confirmed asleep → immediate wake.
  *
- * ALARM tap: toggle showing last sleep duration ("SLEPT HH:MM").
- *   Press again to return to current mode view.
+ * OFF-WRIST detection:
+ *   Temperature drops more than AWAKE_OFFWRIST_TEMP_TENTHS (6°C) below the
+ *   rolling wrist average → watch is on a table, excluded from tracking.
  *
- * ALARM long-press: manual "I just woke up" reset.
- *   Forces AWAKE mode and resets the awake timer to right now.
- *   Use this after taking the watch off, long naps, etc.
+ * ALARM button:  toggle between "time awake" and "last sleep duration"
+ * ALARM long:    manual "I just woke up" reset
+ * LIGHT long:    manual "I'm still awake" — resets the still poll counter
+ *                (use this when lying in bed doom scrolling)
  *
- * Monitoring runs every minute as a background task on any face.
- * Requires step counting to be enabled (step_counter_face enables it).
+ * Target accuracy: ~35 minutes (one poll interval).
+ *
+ * Display:
+ *   AWAKE mode:  top "AWAKE", bottom HH:MM time awake
+ *   SLEEP mode:  top "SLEEP", bottom HH:MM time asleep, moon indicator on
+ *   SLEPT view:  top "SLEPT", bottom HH:MM last sleep duration (alarm toggle)
+ *   OFF-WRIST:   top "OFF  ", bottom "WrISt"
  */
 
 #include "movement.h"
 
-// Minutes of step inactivity before declaring sleep
-#define AWAKE_SLEEP_THRESHOLD_MINUTES 60
-#define AWAKE_SLEEP_THRESHOLD_SEC     (AWAKE_SLEEP_THRESHOLD_MINUTES * 60)
+#define AWAKE_POLL_MINUTES         20     // background poll interval
+#define AWAKE_SLEEP_POLLS           5     // 5 × 20 min ≈ 100 min → confirm sleep
+#define AWAKE_WAKE_POLLS            2     // 2 × 20 min = 40 min of sustained motion → confirm wake
+#define AWAKE_OFFWRIST_TEMP_TENTHS 60     // 6.0 °C drop from wrist avg → off wrist
+#define AWAKE_MIN_SLEEP_SEC      (30 * 60)// ignore sleep blocks shorter than 30 min
 
 typedef enum {
-    AWAKE_MODE_AWAKE = 0,
-    AWAKE_MODE_SLEEP,
+    AWAKE_STATE_AWAKE = 0,
+    AWAKE_STATE_MAYBE_SLEEPING,   // stillness accumulating, not yet confirmed
+    AWAKE_STATE_ASLEEP,
+    AWAKE_STATE_OFF_WRIST,
 } awake_mode_t;
 
 typedef struct {
     awake_mode_t mode;
-    bool show_prev_sleep;           // toggle: showing last sleep duration instead of current
-    uint32_t mode_start_epoch;      // epoch when current mode (awake/sleep) started
-    uint32_t prev_sleep_seconds;    // duration of last completed sleep period
-    uint32_t last_step_epoch;       // epoch when steps were last detected
-    uint32_t last_step_count;       // step count at last background check
+    bool         show_sleep;           // display toggle: show last sleep vs. current mode
+    uint32_t     still_since_epoch;    // when continuous stillness began
+    uint32_t     sleep_start_epoch;    // confirmed (backdated) sleep start
+    uint32_t     wake_epoch;           // when current awake period began
+    uint32_t     last_sleep_seconds;   // duration of last completed sleep period
+    uint8_t      still_poll_count;     // consecutive still polls (toward sleep confirm)
+    uint8_t      active_poll_count;    // consecutive active polls (toward wake confirm)
+    uint32_t     first_active_epoch;   // epoch of first active poll in current wake run
+    uint32_t     last_step_count;      // step count at last poll
+    int16_t      wrist_temp_avg;       // rolling avg temp on wrist (tenths of °C)
+    uint8_t      wrist_temp_samples;   // samples collected for avg (caps at 8)
 } awake_state_t;
 
 void awake_face_setup(uint8_t watch_face_index, void **context_ptr);

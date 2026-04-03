@@ -40,6 +40,7 @@ const watch_face_t watch_faces[] = {
     // --- secondary faces / tools (indices 7-14, long-press Mode from face 0) ---
     stebbs_face,
     stebbs_countdown_face,
+    active_countdown_face,
     fast_stopwatch_face,
     bubble_level_face,
     tap_tempo_face,
@@ -55,6 +56,9 @@ const watch_face_t watch_faces[] = {
     voltage_face,
     butterfly_game_face,
     endless_runner_face,
+    chess_clock_face,
+    dice_face,
+    cook_face,
 };
 
 const char *watch_face_names[] = {
@@ -69,6 +73,7 @@ const char *watch_face_names[] = {
     // secondary
     "Stebbs",
     "Countdown",
+    "Life Left",
     "Stopwatch",
     "Bubble Level",
     "Tap Tempo",
@@ -84,6 +89,9 @@ const char *watch_face_names[] = {
     "Battery",
     "Butterfly",
     "Runner",
+    "Chess Clock",
+    "Dice",
+    "Cook Temps",
 };
 
 #define MOVEMENT_NUM_FACES (sizeof(watch_faces) / sizeof(watch_face_t))
