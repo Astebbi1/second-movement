@@ -47,20 +47,32 @@ static void _active_countdown_update(active_countdown_state_t *state) {
     watch_date_time_t date_time = watch_rtc_get_date_time();
     uint32_t now = watch_utility_date_time_to_unix_time(date_time, 0);
 
-    char bot[7];
+    char buf[5];  /* 4 digits + NUL — written to HOURS+MINUTES, seconds always blank */
 
     uint32_t secs_left = (now >= ACTIVE_COUNTDOWN_DEATH_EPOCH)
                          ? 0 : (ACTIVE_COUNTDOWN_DEATH_EPOCH - now);
 
+    /* Clear seconds position — number never reaches there */
+    watch_display_text(WATCH_POSITION_SECONDS, "  ");
+
     if (state->view == ACTIVE_COUNTDOWN_VIEW_DAYS) {
         watch_display_text_with_fallback(WATCH_POSITION_TOP, "dSLFT", "dy");
-        snprintf(bot, sizeof(bot), "%6lu", (unsigned long)(secs_left / 86400));
+        unsigned long days = secs_left / 86400;
+        /* Days can exceed 9999: use far-left pixel as the leading "1" */
+        if (days >= 10000) {
+            watch_set_pixel(0, 22);
+        } else {
+            watch_clear_pixel(0, 22);
+        }
+        snprintf(buf, sizeof(buf), "%4lu", (unsigned long)(days % 10000));
     } else {
-        /* Weeks remaining — ~15,800 at time of writing */
+        /* Weeks remaining — 4 digits max (~2,270), no pixel needed */
         watch_display_text_with_fallback(WATCH_POSITION_TOP, "WkSLF", "Wk");
-        snprintf(bot, sizeof(bot), "%6lu", (unsigned long)(secs_left / 604800));
+        watch_clear_pixel(0, 22);
+        snprintf(buf, sizeof(buf), "%4lu", (unsigned long)(secs_left / 604800));
     }
-    watch_display_text(WATCH_POSITION_BOTTOM, bot);
+    watch_display_text(WATCH_POSITION_HOURS,   buf);
+    watch_display_text(WATCH_POSITION_MINUTES, buf + 2);
 }
 
 void active_countdown_face_setup(uint8_t watch_face_index, void **context_ptr) {

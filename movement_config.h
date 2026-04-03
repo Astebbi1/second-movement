@@ -29,25 +29,29 @@
 #include "zones.h"
 
 const watch_face_t watch_faces[] = {
-    // --- primary faces (indices 0-6) ---
+    // --- primary faces (indices 0-9) ---
     clock_face,
-    awake_face,
     step_counter_face,
-    sunrise_sunset_face,
-    nxtup_face,
+    awake_face,
     day_one_face,
-    wyoscan_face,
-    // --- secondary faces / tools (indices 7-14, long-press Mode from face 0) ---
-    stebbs_face,
+    nxtup_face,
+    sunrise_sunset_face,
+    moon_phase_face,
     stebbs_countdown_face,
     active_countdown_face,
+    wyoscan_face,
+    // --- secondary faces / tools (indices 10-19, long-press Mode from face 0) ---
+    stebbs_face,
     fast_stopwatch_face,
     bubble_level_face,
     tap_tempo_face,
+    cook_face,
     temperature_display_face,
     tally_face,
     toss_up_face,
-    // --- tertiary faces / settings+games (indices 15-22, really-long-press Mode from face 0) ---
+    chess_clock_face,
+    dice_face,
+    // --- tertiary faces / settings+games (index 20+, really-long-press Mode from face 0) ---
     melody_face,
     chime_face,
     alarm_face,
@@ -56,31 +60,32 @@ const watch_face_t watch_faces[] = {
     voltage_face,
     butterfly_game_face,
     endless_runner_face,
-    chess_clock_face,
-    dice_face,
-    cook_face,
 };
 
 const char *watch_face_names[] = {
-    // primary
+    // primary (indices 0-9)
     "Clock",
-    "Awake",
     "Step Counter",
-    "Sunrise/Sunset",
-    "Next Up",
+    "Awake",
     "Day One",
-    "Wyo Scan",
-    // secondary
-    "Stebbs",
+    "Next Up",
+    "Sunrise/Sunset",
+    "Moon Phase",
     "Countdown",
     "Life Left",
+    "Wyo Scan",
+    // secondary (indices 10-19)
+    "Stebbs",
     "Stopwatch",
     "Bubble Level",
     "Tap Tempo",
+    "Cook Temps",
     "Temperature",
     "Tally",
     "Coins",
-    // tertiary
+    "Chess Clock",
+    "Dice",
+    // tertiary (index 20+)
     "Melody",
     "Chime",
     "Alarm",
@@ -89,18 +94,15 @@ const char *watch_face_names[] = {
     "Battery",
     "Butterfly",
     "Runner",
-    "Chess Clock",
-    "Dice",
-    "Cook Temps",
 };
 
 #define MOVEMENT_NUM_FACES (sizeof(watch_faces) / sizeof(watch_face_t))
 
 /* Index of the first secondary (tools) face. Long-press Mode jumps here from face 0. */
-#define MOVEMENT_SECONDARY_FACE_INDEX 7
+#define MOVEMENT_SECONDARY_FACE_INDEX 10
 
 /* Index of the first tertiary (games) face. Really-long-press Mode jumps here from face 0. */
-#define MOVEMENT_TERTIARY_FACE_INDEX 15
+#define MOVEMENT_TERTIARY_FACE_INDEX 20
 
 /* Default timezone for first boot. UTZ_NEW_YORK = America/New_York (Eastern, includes DST) */
 #define MOVEMENT_DEFAULT_TIMEZONE UTZ_NEW_YORK
