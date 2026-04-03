@@ -58,7 +58,7 @@ static const cook_item_t ITEMS[] = {
 
 static void _cook_display(cook_face_state_t *state) {
     const cook_item_t *item = &ITEMS[state->item_idx];
-    char bot[7];
+    char bot[10];  /* snprintf sink — watch_display_text reads only 6 chars */
 
     /* Top row: food label */
     watch_display_text_with_fallback(WATCH_POSITION_TOP, item->top_custom, item->top_classic);

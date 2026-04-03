@@ -73,4 +73,10 @@ SRCS += \
   ./watch-faces/complication/awake_face.c \
   ./watch-faces/complication/nxtup_face.c \
   ./lib/embedded_pedometer/count_steps.c \
+  ./watch-faces/complication/chess_clock_face.c \
+  ./watch-faces/complication/active_countdown_face.c \
+  ./watch-faces/complication/dice_face.c \
+  ./watch-faces/complication/cook_face.c \
+  ./watch-faces/complication/memento_mori_face.c \
+  ./watch-library/shared/rhythm_tap.c \
 # New watch faces go above this line.

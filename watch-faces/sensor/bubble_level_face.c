@@ -125,7 +125,7 @@ static void _update_display(bubble_level_state_t *state) {
             watch_clear_indicator(WATCH_INDICATOR_SIGNAL);
         }
         if (state->tick_count % TICK_FREQ == 0) {
-            watch_buzzer_play_sequence(_level_beep, NULL);
+            watch_buzzer_play_sequence((int8_t *)_level_beep, NULL);
         }
     } else {
         if (state->led_enabled) {
