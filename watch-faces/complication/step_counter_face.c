@@ -162,10 +162,6 @@ bool step_counter_face_loop(movement_event_t event, void *context) {
             }
             break;
         case EVENT_ACTIVATE:
-            if (!movement_has_lis2dw() && !movement_has_lis2dux()) {
-                movement_move_to_next_face();
-                return false;
-            }
             logger_state->display_index = logger_state->data_points;
             logger_state->sec_inactivity = 1;
             logger_state->in_low_batt = movement_step_counter_in_low_battery();

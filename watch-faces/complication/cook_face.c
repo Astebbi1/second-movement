@@ -63,14 +63,16 @@ static void _cook_display(cook_face_state_t *state) {
     /* Top row: food label */
     watch_display_text_with_fallback(WATCH_POSITION_TOP, item->top_custom, item->top_classic);
 
-    /* Bottom row alternates each second: oven temp / internal temp */
-    if (state->tick % 2 == 0) {
-        snprintf(bot, sizeof(bot), "ov %3u", item->oven_f);
+    /* Bottom row alternates every 3 seconds: oven temp (HT) / internal temp (TG).
+     * Format " NNNxx" puts the 3-digit number in HOURS+MINUTES (big digits)
+     * and the 2-char label in SECONDS (small digits). */
+    if ((state->tick / 3) % 2 == 0) {
+        snprintf(bot, sizeof(bot), " %3uHT", item->oven_f);
     } else {
         if (item->internal_f > 0) {
-            snprintf(bot, sizeof(bot), "in %3u", item->internal_f);
+            snprintf(bot, sizeof(bot), " %3uTG", item->internal_f);
         } else {
-            snprintf(bot, sizeof(bot), "in n/A");
+            snprintf(bot, sizeof(bot), "  --TG");
         }
     }
     watch_display_text(WATCH_POSITION_BOTTOM, bot);

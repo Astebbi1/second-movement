@@ -261,8 +261,22 @@ void alarm_face_setup(uint8_t watch_face_index, void **context_ptr) {
         state->alarm[2].pitch = 3;
         state->alarm[2].beeps = 3;  // Tetris
         state->alarm[2].enabled = true;
+        // Alarm 4: 9:01pm every day, Gambler melody
+        state->alarm[3].day = ALARM_DAY_EACH_DAY;
+        state->alarm[3].hour = 21;
+        state->alarm[3].minute = 1;
+        state->alarm[3].pitch = 3;  // melody mode
+        state->alarm[3].beeps = 0;  // Gambler
+        state->alarm[3].enabled = true;
+        // Alarm 5: 8:50am weekdays, Carmen melody
+        state->alarm[4].day = ALARM_DAY_WORKDAY;
+        state->alarm[4].hour = 8;
+        state->alarm[4].minute = 50;
+        state->alarm[4].pitch = 3;  // melody mode
+        state->alarm[4].beeps = 6;  // Carmen
+        state->alarm[4].enabled = true;
         // Remaining slots: generic defaults
-        for (uint8_t i = 3; i < ALARM_ALARMS; i++) {
+        for (uint8_t i = 5; i < ALARM_ALARMS; i++) {
             state->alarm[i].day = ALARM_DAY_EACH_DAY;
             state->alarm[i].beeps = 5;
             state->alarm[i].pitch = 1;

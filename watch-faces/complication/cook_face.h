@@ -31,9 +31,9 @@
  *
  * A quick-reference cooking temperature guide.
  *
- * Top row shows the food type. Bottom row alternates each second between:
- *   ov XXX  — recommended oven temperature (°F)
- *   in XXX  — target internal temperature (°F); shows "in n/A" if not applicable
+ * Top row shows the food type. Bottom row alternates every 3 seconds between:
+ *   NNN HT  — recommended oven/heat temperature (°F), number in big digits, "HT" in small
+ *   NNN TG  — target internal temperature (°F), number in big digits, "TG" in small; shows "--TG" if not applicable
  *
  * ALARM button: next food item
  * LIGHT button: LED

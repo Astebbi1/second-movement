@@ -54,7 +54,9 @@ typedef enum {
     DAY_ONE_PAGE_YEAR,
     DAY_ONE_PAGE_MONTH,
     DAY_ONE_PAGE_DAY,
-    DAY_ONE_PAGE_DATE
+    DAY_ONE_PAGE_DATE,
+    DAY_ONE_PAGE_DAYS_LEFT,
+    DAY_ONE_PAGE_WEEKS_LEFT
 } day_one_page_t;
 
 typedef struct {

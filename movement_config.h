@@ -29,7 +29,7 @@
 #include "zones.h"
 
 const watch_face_t watch_faces[] = {
-    // --- primary faces (indices 0-9) ---
+    // --- primary faces (indices 0-8) ---
     clock_face,
     step_counter_face,
     awake_face,
@@ -37,33 +37,31 @@ const watch_face_t watch_faces[] = {
     nxtup_face,
     sunrise_sunset_face,
     moon_phase_face,
-    stebbs_countdown_face,
-    active_countdown_face,
+    temperature_display_face,
     wyoscan_face,
-    // --- secondary faces / tools (indices 10-19, long-press Mode from face 0) ---
+    // --- secondary faces / tools (indices 9-16, long-press Mode from face 0) ---
     stebbs_face,
+    stebbs_countdown_face,
     fast_stopwatch_face,
     bubble_level_face,
     tap_tempo_face,
     cook_face,
-    temperature_display_face,
     tally_face,
     toss_up_face,
-    chess_clock_face,
-    dice_face,
-    // --- tertiary faces / settings+games (index 20+, really-long-press Mode from face 0) ---
+    // --- tertiary faces / settings+games (index 17+, really-long-press Mode from face 0) ---
     melody_face,
     chime_face,
     alarm_face,
     set_time_face,
     settings_face,
     voltage_face,
+    chess_clock_face,
     butterfly_game_face,
     endless_runner_face,
 };
 
 const char *watch_face_names[] = {
-    // primary (indices 0-9)
+    // primary (indices 0-8)
     "Clock",
     "Step Counter",
     "Awake",
@@ -71,27 +69,25 @@ const char *watch_face_names[] = {
     "Next Up",
     "Sunrise/Sunset",
     "Moon Phase",
-    "Countdown",
-    "Life Left",
+    "Temperature",
     "Wyo Scan",
-    // secondary (indices 10-19)
+    // secondary (indices 9-16)
     "Stebbs",
+    "Countdown",
     "Stopwatch",
     "Bubble Level",
     "Tap Tempo",
     "Cook Temps",
-    "Temperature",
     "Tally",
     "Coins",
-    "Chess Clock",
-    "Dice",
-    // tertiary (index 20+)
+    // tertiary (index 17+)
     "Melody",
     "Chime",
     "Alarm",
     "Set Time",
     "Settings",
     "Battery",
+    "Chess Clock",
     "Butterfly",
     "Runner",
 };
@@ -99,10 +95,10 @@ const char *watch_face_names[] = {
 #define MOVEMENT_NUM_FACES (sizeof(watch_faces) / sizeof(watch_face_t))
 
 /* Index of the first secondary (tools) face. Long-press Mode jumps here from face 0. */
-#define MOVEMENT_SECONDARY_FACE_INDEX 10
+#define MOVEMENT_SECONDARY_FACE_INDEX 9
 
 /* Index of the first tertiary (games) face. Really-long-press Mode jumps here from face 0. */
-#define MOVEMENT_TERTIARY_FACE_INDEX 20
+#define MOVEMENT_TERTIARY_FACE_INDEX 17
 
 /* Default timezone for first boot. UTZ_NEW_YORK = America/New_York (Eastern, includes DST) */
 #define MOVEMENT_DEFAULT_TIMEZONE UTZ_NEW_YORK

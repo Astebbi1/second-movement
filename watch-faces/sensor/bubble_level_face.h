@@ -50,8 +50,8 @@
 #include "movement.h"
 
 typedef enum {
-    BUBBLE_MODE_X  = 0,   // 1D level on X axis (left/right tilt)
-    BUBBLE_MODE_Y  = 1,   // 1D level on Y axis (front/back tilt)
+    BUBBLE_MODE_Y  = 0,   // 1D level on Y axis (front/back tilt)
+    BUBBLE_MODE_X  = 1,   // 1D level on X axis (left/right tilt)
     BUBBLE_MODE_2D = 2,   // 2D level: left half = Y, right half = X
 } bubble_mode_t;
 
