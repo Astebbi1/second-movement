@@ -32,8 +32,8 @@
  * A quick-reference cooking temperature guide.
  *
  * Top row shows the food type. Bottom row alternates every 3 seconds between:
- *   NNN HT  — recommended oven/heat temperature (°F), number in big digits, "HT" in small
- *   NNN TG  — target internal temperature (°F), number in big digits, "TG" in small; shows "--TG" if not applicable
+ *   NNN°H  — recommended oven/heat temperature (°F), degree dot + H in seconds position
+ *   NNN°T  — target internal temperature (°F), degree dot + T in seconds position; shows "--°T" if not applicable
  *
  * ALARM button: next food item
  * LIGHT button: LED

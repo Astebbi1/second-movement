@@ -237,25 +237,25 @@ bool day_one_face_loop(movement_event_t event, void *context) {
                     _day_one_face_increment(state);
                     break;
                 case DAY_ONE_PAGE_DISPLAY:
+                    state->current_page = DAY_ONE_PAGE_DAYS_LEFT;
+                    _day_one_face_show_count(_day_one_face_days_left(state), "DYLFt", "DL");
+                    state->ticks = 30;
+                    break;
+                case DAY_ONE_PAGE_DAYS_LEFT:
+                    state->current_page = DAY_ONE_PAGE_WEEKS_LEFT;
+                    _day_one_face_show_count(_day_one_face_days_left(state) / 7, "UKLFt", "WL");
+                    state->ticks = 30;
+                    break;
+                case DAY_ONE_PAGE_WEEKS_LEFT:
                     state->current_page = DAY_ONE_PAGE_DATE;
                     sprintf(buf, "%04d%02d%02d", state->birth_year % 10000, state->birth_month % 100, state->birth_day % 100);
                     watch_display_text(WATCH_POSITION_TOP_RIGHT, buf);
                     watch_display_text(WATCH_POSITION_HOURS,     buf + 2);
                     watch_display_text(WATCH_POSITION_MINUTES,   buf + 4);
                     watch_display_text(WATCH_POSITION_SECONDS,   buf + 6);
-                    state->ticks = 2;
+                    state->ticks = 30;
                     break;
                 case DAY_ONE_PAGE_DATE:
-                    state->current_page = DAY_ONE_PAGE_DAYS_LEFT;
-                    _day_one_face_show_count(_day_one_face_days_left(state), "DYLFt", "DL");
-                    state->ticks = 2;
-                    break;
-                case DAY_ONE_PAGE_DAYS_LEFT:
-                    state->current_page = DAY_ONE_PAGE_WEEKS_LEFT;
-                    _day_one_face_show_count(_day_one_face_days_left(state) / 7, "UKLFt", "WL");
-                    state->ticks = 2;
-                    break;
-                case DAY_ONE_PAGE_WEEKS_LEFT:
                     state->current_page = DAY_ONE_PAGE_DISPLAY;
                     _day_one_face_update(state);
                     break;
