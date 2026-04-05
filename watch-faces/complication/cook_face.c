@@ -26,7 +26,6 @@
 #include <string.h>
 #include <stdio.h>
 #include "cook_face.h"
-#include "watch_common_display.h"
 
 /* --- Lookup table --------------------------------------------------------
  * oven_f   : recommended oven temperature in °F
@@ -63,42 +62,18 @@ static void _cook_display(cook_face_state_t *state) {
     /* Top row: food label */
     watch_display_text_with_fallback(WATCH_POSITION_TOP, item->top_custom, item->top_classic);
 
-    if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
-        /* Custom LCD: write 3-digit temp into hours+minutes positions, then
-         * draw the degree symbol (segment A = top bar of position 8) and the
-         * mode letter (H or T) into position 9. */
-        char num[5];
-        if (state->show_heat) {
-            snprintf(num, sizeof(num), "%4u", item->oven_f);
-        } else {
-            if (item->internal_f > 0) {
-                snprintf(num, sizeof(num), "%4u", item->internal_f);
-            } else {
-                snprintf(num, sizeof(num), "  --");
-            }
-        }
-        /* Blank seconds area, then place digits in hours/minutes */
-        watch_display_text(WATCH_POSITION_SECONDS, "  ");
-        watch_display_text(WATCH_POSITION_HOURS,   num);
-        watch_display_text(WATCH_POSITION_MINUTES, num + 2);
-        /* Degree symbol: segment A (top bar) of the first seconds digit = pixel (3, 10) */
-        watch_set_pixel(3, 10);
-        /* Mode letter in position 9 (second seconds digit) */
-        watch_display_character(state->show_heat ? 'H' : 'T', 9);
+    /* Bottom row: right-aligned 3-digit temp, space, mode letter (H=oven, T=target) */
+    char bot[9];
+    if (state->show_heat) {
+        snprintf(bot, sizeof(bot), " %3u H", item->oven_f);
     } else {
-        /* Classic LCD fallback: plain text in bottom 6-char row */
-        char bot[10];
-        if (state->show_heat) {
-            snprintf(bot, sizeof(bot), " %3u H", item->oven_f);
+        if (item->internal_f > 0) {
+            snprintf(bot, sizeof(bot), " %3u T", item->internal_f);
         } else {
-            if (item->internal_f > 0) {
-                snprintf(bot, sizeof(bot), " %3u T", item->internal_f);
-            } else {
-                snprintf(bot, sizeof(bot), "  -- T");
-            }
+            snprintf(bot, sizeof(bot), "  -- T");
         }
-        watch_display_text(WATCH_POSITION_BOTTOM, bot);
     }
+    watch_display_text(WATCH_POSITION_BOTTOM, bot);
 }
 
 void cook_face_setup(uint8_t watch_face_index, void **context_ptr) {
@@ -152,5 +127,4 @@ bool cook_face_loop(movement_event_t event, void *context) {
 
 void cook_face_resign(void *context) {
     (void) context;
-    if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) watch_clear_pixel(3, 10);
 }

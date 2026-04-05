@@ -30,42 +30,40 @@
 #include "watch_common_display.h"
 
 /*
-Slowly render the current time from left to right,
-scanning across its liquid crystal face, completing 1 cycle every 2 seconds.
+A single comet wave sweeps left-to-right across the ENTIRE display every 3.3
+seconds (107 frames at 32 fps), touching every character and indicator in order:
 
-Created to mimic the wyoscan watch that was produced by Halmos and designed by Dexter Sinister
-It looks like this https://www.o-r-g.com/apps/wyoscan
+  Phase 1 (frames   0-39): top row chars, segment-by-segment
+                            pos0 (DOW[0]), pos1 (DOW[1]), pos10 (DOW[2]),
+                            pos2 (date tens), pos3 (date units)
+  Phase 2 (frames  40-42): indicator column — PM, BELL, SIGNAL, one per frame
+  Phase 3 (frames  43-90): time digits — H1 H2 : M1 M2 : S1 S2
+  Phase 4 (frames 91-106): trailing comet clearance (16 frames)
 
-You'll notice that reading this watch requires more attention than usual,
-as the seven segments of each digit are lit one by one across its display.
-This speed may be adjusted until it reaches the limits of your perception.
-You and your watch are now in tune.
+A ring buffer of MAX_ILLUMINATED_SEGMENTS=16 pixels creates the comet tail.
+Old pixels are erased as new ones are added, giving the glowing-trail effect.
+When an indicator pixel enters the ring buffer it lights for ~15 frames then
+is naturally extinguished as the tail advances — no independent blink logic.
 
-This is a relatively generic way of animating a time display.
-If you want to modify the animation, you can change the segment_map
-the A-F are corresponding to the segments on the watch face
+Top-row characters are drawn using Custom_LCD_Character_Set (bit per segment)
+and Custom_LCD_Display_Mapping (segment → com/seg pixel address), the same
+tables used by watch_display_character().  Time digits use the hand-crafted
+segment_map / clock_mapping from the original wyoscan implementation.
+
+The animation runs on the custom LCD only; classic LCD shows a static display
+updated 1 Hz with the same 1-Hz indicator blink as before.
+
+Created to mimic the wyoscan watch that was produced by Halmos and designed by
+Dexter Sinister.  https://www.o-r-g.com/apps/wyoscan
+
+Segment naming convention (A-G standard):
   A
 F   B
   G
 E   C
   D
-the X's are the frames that will be skipped in the animation
-This particular segment_map allocates 8 frames to display each number
-this is to achieve the 2 second cycle time.
-8 frames per number * 6 numbers + the trailing 16 frames = 64 frames
-at 32 frames per second, this is a 2 second cycle time.
-
-I tried to make the animation of each number display similar to if you were
-to draw the number on the watch face with a pen, pausing with 'X'
-when your pen might turn a corner or when you might cross over
-a line you've already drawn. It is vaguely top to bottom and counter,
-clockwise when possible.
-
-The top row (day-of-week + day-of-month) is displayed statically using the
-firmware's native character set via watch_display_text_with_fallback, so
-weekday abbreviations render correctly on the custom LCD.
-The bottom row (HHMMSS) is animated with the scanning effect.
 */
+
 static char *segment_map[] = {
     "AXFBDEXC",  // 0
     "BXXXCXXX",  // 1
@@ -79,17 +77,17 @@ static char *segment_map[] = {
     "AFGBXXCD"   // 9
 };
 
-// 3-char DOW names for custom LCD (pos0, pos1, pos10 = left, centre-left, centre)
+// 3-char DOW names for custom LCD (pos0, pos1, pos10)
 static const char *_wyoscan_dow_3[] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
 // 2-char fallback for classic LCD
 static const char *_wyoscan_dow_2[] = {"Mo", "tu", "WE", "tH", "Fr", "SA", "Su"};
 
-// Position indices used by watch_display_text_with_fallback(WATCH_POSITION_TOP, 5-char-str)
-// Custom LCD maps char[0..4] → LCD positions {0,1,10,2,3}
+// Custom LCD top-row position order (physical left-to-right):
+// char[0]→pos0, char[1]→pos1, char[2]→pos10, char[3]→pos2, char[4]→pos3
 static const uint8_t _top_positions[5] = {0, 1, 10, 2, 3};
 
-// Returns 0=Monday ... 6=Sunday using Zeller's congruence.
-// unit.year is years since 2020, so add 20 to get years since 2000.
+// Returns 0=Monday ... 6=Sunday (Zeller's congruence).
+// unit.year is years since 2020; add 20 to get years since 2000.
 static uint8_t _wyoscan_dow(watch_date_time_t dt) {
     uint8_t y = dt.unit.year + 20;
     uint8_t m = dt.unit.month;
@@ -104,72 +102,76 @@ static void _wyoscan_store_date(wyoscan_state_t *state, watch_date_time_t dt) {
     strncpy(state->date_classic, _wyoscan_dow_2[dow], 3);
 }
 
-// Reveal top row chars 0..upto (0-based) from stored date strings.
-// Custom LCD: up to 5 chars at positions {0,1,10,2,3}.
-// Classic LCD: up to 2 chars at positions 0,1 (DOW only).
+// Reveal top row chars 0..upto from stored date strings (classic LCD only).
 static void _wyoscan_reveal_date_upto(wyoscan_state_t *state, uint8_t upto) {
-    if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
-        if (upto > 4) upto = 4;
-        for (uint8_t i = 0; i <= upto; i++)
-            watch_display_character(state->date_top[i], _top_positions[i]);
-    } else {
-        if (upto > 1) upto = 1;
-        for (uint8_t i = 0; i <= upto; i++)
-            watch_display_character(state->date_classic[i], i);
-    }
+    if (upto > 1) upto = 1;
+    for (uint8_t i = 0; i <= upto; i++)
+        watch_display_character(state->date_classic[i], i);
 }
 
-// Blank the top row.
+// Blank the top row (custom LCD).
 static void _wyoscan_blank_top(void) {
-    if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
-        for (uint8_t i = 0; i < 5; i++) watch_display_character(' ', _top_positions[i]);
-    } else {
-        watch_display_character(' ', 0);
-        watch_display_character(' ', 1);
-    }
+    for (uint8_t i = 0; i < 5; i++) watch_display_character(' ', _top_positions[i]);
 }
 
 /*
-This is the mapping of input to the watch_set_pixel() function
-for each position in hhmmss it defines the 2 dimension input at each of A-F*/
+Pixel coordinates for each segment (A-G) of each time-digit position.
+Index [pos][seg_letter-'A'] → {com, seg} for watch_set_pixel / watch_clear_pixel.
+*/
 static const int32_t clock_mapping[6][7][2] = {
-    // hour 1 (custom LCD position 4): A=3,16  B=2,16  C=1,16  D=0,16  E=1,22  F=3,22  G=2,22
+    // hour 1 (LCD pos 4)
     {{3,16}, {2,16}, {1,16}, {0,16}, {1,22}, {3,22}, {2,22}},
-    // hour 2 (custom LCD position 5): A=3,14  B=2,14  C=1,14  D=0,15  E=1,15  F=3,15  G=2,15
+    // hour 2 (LCD pos 5)
     {{3,14}, {2,14}, {1,14}, {0,15}, {1,15}, {3,15}, {2,15}},
-    // minute 1 (custom LCD position 6): A=3,1   B=2,2   C=0,2   D=0,1   E=1,1   F=2,1   G=1,2
-    {{3,1}, {2,2}, {0,2}, {0,1}, {1,1}, {2,1}, {1,2}},
-    // minute 2 (custom LCD position 7): A=3,3   B=2,4   C=0,4   D=0,3   E=1,3   F=2,3   G=1,4
-    {{3,3}, {2,4}, {0,4}, {0,3}, {1,3}, {2,3}, {1,4}},
-    // second 1 (custom LCD position 8): A=3,10  B=3,8   C=0,5   D=1,5   E=3,4   F=3,2   G=2,5
-    {{3,10}, {3,8}, {0,5}, {1,5}, {3,4}, {3,2}, {2,5}},
-    // second 2 (custom LCD position 9): A=3,6   B=3,7   C=2,7   D=0,7   E=0,6   F=2,6   G=1,6
-    {{3,6}, {3,7}, {2,7}, {0,7}, {0,6}, {2,6}, {1,6}},
+    // minute 1 (LCD pos 6)
+    {{3,1},  {2,2},  {0,2},  {0,1},  {1,1},  {2,1},  {1,2}},
+    // minute 2 (LCD pos 7)
+    {{3,3},  {2,4},  {0,4},  {0,3},  {1,3},  {2,3},  {1,4}},
+    // second 1 (LCD pos 8)
+    {{3,10}, {3,8},  {0,5},  {1,5},  {3,4},  {3,2},  {2,5}},
+    // second 2 (LCD pos 9)
+    {{3,6},  {3,7},  {2,7},  {0,7},  {0,6},  {2,6},  {1,6}},
 };
+
+/* Indicator pixel coordinates for the custom LCD (from _watch_update_indicator_segments):
+   PM   = com 3, seg 21
+   BELL = com 1, seg 21
+   SIGNAL = com 0, seg 21                                          */
+#define IND_PM_COM     3
+#define IND_PM_SEG     21
+#define IND_BELL_COM   1
+#define IND_BELL_SEG   21
+#define IND_SIG_COM    0
+#define IND_SIG_SEG    21
+
+/* Total animation frames:
+   40 top-row + 3 indicators + 48 time digits + 16 clearance = 107  */
+#define WYOSCAN_TOTAL_FRAMES 107
 
 void wyoscan_face_setup(uint8_t watch_face_index, void ** context_ptr) {
     (void) watch_face_index;
     if (*context_ptr == NULL) {
         *context_ptr = malloc(sizeof(wyoscan_state_t));
         memset(*context_ptr, 0, sizeof(wyoscan_state_t));
-        // Do any one-time tasks in here; the inside of this conditional happens only at boot.
     }
-    // Do any pin or peripheral setup here; this will be called whenever the watch wakes from deep sleep.
 }
 
 void wyoscan_face_activate(void *context) {
     wyoscan_state_t *state = (wyoscan_state_t *)context;
-    state->total_frames = 64;
+    state->total_frames = WYOSCAN_TOTAL_FRAMES;
     if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
         movement_request_tick_frequency(32);
+        // Show full date immediately; the wave will blank and re-reveal on first cycle.
+        watch_date_time_t dt = movement_get_local_date_time();
+        _wyoscan_store_date(state, dt);
+        for (uint8_t i = 0; i < 5; i++)
+            watch_display_character(state->date_top[i], _top_positions[i]);
     } else {
-        movement_request_tick_frequency(1); /* classic: static display, 1 Hz is enough */
+        movement_request_tick_frequency(1);
+        watch_date_time_t dt = movement_get_local_date_time();
+        _wyoscan_store_date(state, dt);
+        _wyoscan_reveal_date_upto(state, 1);
     }
-    // Pre-populate date strings; show the full date statically on activation.
-    // The animation will blank and re-reveal it on the first tick cycle.
-    watch_date_time_t dt = movement_get_local_date_time();
-    _wyoscan_store_date(state, dt);
-    _wyoscan_reveal_date_upto(state, 4);
 }
 
 bool wyoscan_face_loop(movement_event_t event, void *context) {
@@ -178,14 +180,15 @@ bool wyoscan_face_loop(movement_event_t event, void *context) {
     watch_date_time_t date_time;
     switch (event.event_type) {
         case EVENT_ACTIVATE:
-            // Date already shown by wyoscan_face_activate; nothing more to do.
+            // Display was already set up in wyoscan_face_activate.
             break;
+
         case EVENT_TICK:
-            // Classic LCD: static time display with 1-Hz indicator blink; skip pixel animation.
+            // ── Classic LCD: static 1-Hz display ──────────────────────────────
             if (watch_get_lcd_type() != WATCH_LCD_TYPE_CUSTOM) {
                 date_time = movement_get_local_date_time();
                 _wyoscan_store_date(state, date_time);
-                _wyoscan_reveal_date_upto(state, 4);
+                _wyoscan_reveal_date_upto(state, 1);
                 {
                     char tbuf[3];
                     uint8_t h = date_time.unit.hour;
@@ -216,13 +219,14 @@ bool wyoscan_face_loop(movement_event_t event, void *context) {
                 }
                 break;
             }
+
+            // ── Custom LCD: comet wave animation ──────────────────────────────
             if (!state->animate) {
                 date_time = movement_get_local_date_time();
                 state->start = 0;
                 state->end = 0;
                 state->animation = 0;
                 state->animate = true;
-                // Store updated date strings and blank top row for animated reveal.
                 _wyoscan_store_date(state, date_time);
                 _wyoscan_blank_top();
                 {
@@ -238,97 +242,110 @@ bool wyoscan_face_loop(movement_event_t event, void *context) {
                 state->time_digits[3] = date_time.unit.minute % 10;
                 state->time_digits[4] = date_time.unit.second / 10;
                 state->time_digits[5] = date_time.unit.second % 10;
-                // skip leading zero on hour tens digit
-                if (state->time_digits[0] == 0) state->animation = 8;
+                // Leading-zero skip for hour tens is handled in the draw logic.
             }
-            if ( state->animate ) {
-                // Progressive top-row reveal: one char per 8-frame time-digit span.
-                // animation/8 = 0..7; chars are at positions {0,1,10,2,3} (custom) / {0,1} (classic).
-                if (state->animation % 8 == 0) {
-                    _wyoscan_reveal_date_upto(state, (uint8_t)(state->animation / 8));
-                }
 
-                // Blink PM, BELL, and SIGNAL indicators at 1 Hz (16 frames on / 16 off at 32 fps).
-                {
-                    watch_date_time_t blink_dt = movement_get_local_date_time();
-                    bool blink_on = (state->animation % 32) < 16;
-                    bool is_pm = !movement_clock_mode_24h() && (blink_dt.unit.hour >= 12);
-                    if (is_pm) {
-                        if (blink_on) watch_set_indicator(WATCH_INDICATOR_PM);
-                        else          watch_clear_indicator(WATCH_INDICATOR_PM);
-                    } else {
-                        watch_clear_indicator(WATCH_INDICATOR_PM);
-                    }
-                    if (movement_alarm_enabled()) {
-                        if (blink_on) watch_set_indicator(WATCH_INDICATOR_BELL);
-                        else          watch_clear_indicator(WATCH_INDICATOR_BELL);
-                    } else {
-                        watch_clear_indicator(WATCH_INDICATOR_BELL);
-                    }
-                    if (blink_on) watch_set_indicator(WATCH_INDICATOR_SIGNAL);
-                    else          watch_clear_indicator(WATCH_INDICATOR_SIGNAL);
-                }
-
-                // if we have reached the max number of illuminated segments, we clear the oldest one
+            if (state->animate) {
+                // Erase the oldest comet pixel when the ring buffer is full.
                 if ((state->end + 1) % MAX_ILLUMINATED_SEGMENTS == state->start) {
-                    // clear the oldest pixel if it's not 'X'
-                    if (state->illuminated_segments[state->start][0] != 99 && state->illuminated_segments[state->start][1] != 99) {
-                        watch_clear_pixel(state->illuminated_segments[state->start][0], state->illuminated_segments[state->start][1]);
-                    }
-                    // increment the start index to point to the next oldest pixel
+                    uint32_t ox = state->illuminated_segments[state->start][0];
+                    uint32_t oy = state->illuminated_segments[state->start][1];
+                    if (ox != 99 && oy != 99) watch_clear_pixel((uint8_t)ox, (uint8_t)oy);
                     state->start = (state->start + 1) % MAX_ILLUMINATED_SEGMENTS;
                 }
+
                 if (state->animation < state->total_frames - MAX_ILLUMINATED_SEGMENTS) {
+                    // Colon blinks at ~1 Hz (every 32 frames at 32 fps).
                     if (state->animation % 32 == 0) {
-                        if (state->colon) {
-                            watch_set_colon();
-                        } else {
-                            watch_clear_colon();
-                        }
+                        if (state->colon) watch_set_colon(); else watch_clear_colon();
                         state->colon = !state->colon;
                     }
 
-                    // calculate the start position for the current frame
-                    state->position = (state->animation / 8) % 6;
-                    // calculate the current segment for the current digit
-                    state->segment = state->animation % strlen(segment_map[state->time_digits[state->position]]);
-                    // get the segments for the current digit
-                    state->segments = segment_map[state->time_digits[state->position]];
+                    uint8_t anim = state->animation;
+                    bool is_skip = true;
+                    uint8_t px = 0, py = 0;
 
-                    if (state->segments[state->segment] == 'X') {
-                        // if 'X', skip this frame
-                        state->illuminated_segments[state->end][0] = 99;
-                        state->illuminated_segments[state->end][1] = 99;
-                        state->end = (state->end + 1) % MAX_ILLUMINATED_SEGMENTS;
-                        state->animation = (state->animation + 1);
-                        break;
+                    if (anim < 40) {
+                        // ── Phase 1: top-row characters ─────────────────────
+                        // 5 chars × 8 segments each, using the character set
+                        // and position pixel map from watch_common_display.h.
+                        uint8_t char_idx = anim / 8;
+                        uint8_t seg_idx  = anim % 8;
+                        uint8_t lcd_pos  = _top_positions[char_idx];
+                        char c = state->date_top[char_idx];
+                        if (c >= 0x20 && c < 0x80) {
+                            uint8_t bits = Custom_LCD_Character_Set[(uint8_t)(c - 0x20)];
+                            const segment_mapping_t *seg =
+                                &Custom_LCD_Display_Mapping[lcd_pos].segment[seg_idx];
+                            if (((bits >> seg_idx) & 1) &&
+                                (seg->value != segment_does_not_exist)) {
+                                px = seg->address.com;
+                                py = seg->address.seg;
+                                is_skip = false;
+                            }
+                        }
+
+                    } else if (anim < 43) {
+                        // ── Phase 2: indicator column ────────────────────────
+                        // One indicator per frame; each enters the ring buffer
+                        // and is cleared naturally ~15 frames later.
+                        uint8_t idx = anim - 40;
+                        if (idx == 0) {
+                            // PM: only show when in 12h mode and afternoon
+                            date_time = movement_get_local_date_time();
+                            if (!movement_clock_mode_24h() && date_time.unit.hour >= 12) {
+                                px = IND_PM_COM; py = IND_PM_SEG; is_skip = false;
+                            }
+                        } else if (idx == 1) {
+                            // BELL: only when alarm is enabled
+                            if (movement_alarm_enabled()) {
+                                px = IND_BELL_COM; py = IND_BELL_SEG; is_skip = false;
+                            }
+                        } else {
+                            // SIGNAL: always present on this face
+                            px = IND_SIG_COM; py = IND_SIG_SEG; is_skip = false;
+                        }
+
+                    } else {
+                        // ── Phase 3: time digits ─────────────────────────────
+                        // 6 digits × 8 frames, using clock_mapping pixel coords.
+                        uint8_t adjusted = anim - 43;
+                        uint8_t position = adjusted / 8;
+                        uint8_t seg_idx  = adjusted % 8;
+                        // Blank the hour-tens position when it is zero.
+                        if (!(position == 0 && state->time_digits[0] == 0)) {
+                            const char *segs = segment_map[state->time_digits[position]];
+                            if (segs[seg_idx] != 'X') {
+                                px = (uint8_t)clock_mapping[position][segs[seg_idx]-'A'][0];
+                                py = (uint8_t)clock_mapping[position][segs[seg_idx]-'A'][1];
+                                is_skip = false;
+                            }
+                        }
                     }
 
-                    // calculate the animation frame
-                    state->x = clock_mapping[state->position][state->segments[state->segment]-'A'][0];
-                    state->y = clock_mapping[state->position][state->segments[state->segment]-'A'][1];
-
-                    // set the new pixel
-                    watch_set_pixel(state->x, state->y);
-
-                    // store this pixel in the buffer
-                    state->illuminated_segments[state->end][0] = state->x;
-                    state->illuminated_segments[state->end][1] = state->y;
-                    // increment the end index to the next position
+                    // Commit to ring buffer.
+                    if (is_skip) {
+                        state->illuminated_segments[state->end][0] = 99;
+                        state->illuminated_segments[state->end][1] = 99;
+                    } else {
+                        watch_set_pixel(px, py);
+                        state->illuminated_segments[state->end][0] = px;
+                        state->illuminated_segments[state->end][1] = py;
+                    }
                     state->end = (state->end + 1) % MAX_ILLUMINATED_SEGMENTS;
-                }
-                else if (state->animation >= state->total_frames - MAX_ILLUMINATED_SEGMENTS && state->animation < state->total_frames) {
+
+                } else if (state->animation < state->total_frames) {
+                    // Trailing clearance: advance the tail with no new pixels.
                     state->end = (state->end + 1) % MAX_ILLUMINATED_SEGMENTS;
-                }
-                else {
-                    // reset the animation state
+                } else {
                     state->animate = false;
                 }
-                state->animation = (state->animation + 1);
+                state->animation++;
             }
             break;
+
         case EVENT_TIMEOUT:
-            // stay on this face indefinitely
+            // Stay on this face indefinitely.
             break;
         case EVENT_LOW_ENERGY_UPDATE:
             break;

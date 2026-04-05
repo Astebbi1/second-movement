@@ -28,8 +28,10 @@
 /*
  * STEBBS WATCH FACE
  *
- * Simultaneously scrolls "StEbbS HH:MM" across the bottom 6 positions
- * while a fireworks animation loops in the top 4 positions.
+ * Scrolls a date/time marquee across the bottom 6 positions while a
+ * heartbeat pulse animation plays in the top 4 positions: segments
+ * expand from center to full brightness then collapse, with a rest
+ * between pulses (2-second cycle).
  *
  * Usage:
  * - LIGHT button: Illuminate LED
@@ -43,8 +45,8 @@
 
 typedef struct {
     uint8_t scroll_pos;           // Current character position in scroll text
-    uint8_t flop_frame;           // Current frame in the pendulum flop cycle (0-7)
-    uint8_t tick_count;           // Raw tick counter (for scroll/flop rate divisors)
+    uint8_t pulse_step;           // Current step in the heartbeat pulse cycle (0-7)
+    uint8_t tick_count;           // Raw tick counter (for scroll/pulse rate divisors)
     bool paused;                  // Animation paused
     char scroll_text[STEBBS_SCROLL_TEXT_LEN]; // Pre-built scroll text with current time
 } stebbs_state_t;

@@ -31,21 +31,38 @@
 // 8 ticks per second; scroll advances every 2 ticks → 4 chars/sec
 #define TICK_FREQUENCY     8
 #define SCROLL_DIVISOR     2
-// Flop advances every 2 ticks → 4 steps/sec, 8-frame cycle = 2 sec/swing
-#define FLOP_DIVISOR       2
+// Pulse advances every 2 ticks → 4 steps/sec, 8-step cycle = 2 sec/pulse
+#define PULSE_DIVISOR      2
 
 // 5 leading / 3 trailing spaces — extra lead-in so text doesn't appear abruptly
 // Full text: "     StEbbS WAtCH  MON Feb 23   " = 32 chars
 #define SCROLL_CONTENT_LEN 32
 
-// Wave animation: each of the 4 top positions is offset by 2 frames in the
-// cycle, so the rotation flows left-to-right across the top rather than all
-// positions moving in lockstep.
-// l = left vertical (E+F), / = forward slash (B+E), - = middle bar (G),
-// \ = backslash (C+F), 1 = right vertical (B+C)
-#define FLOP_CYCLE_LEN   8
-#define FLOP_WAVE_OFFSET 2   // frame offset between adjacent top positions
-static const char flop_seq[FLOP_CYCLE_LEN] = {'l', '/', '-', '\\', '1', '\\', '-', '/'};
+// Heartbeat pulse animation for the top 4 positions.
+// Segments grow outward from the centre, peak at full brightness ('8' = all
+// segments), then shrink back and rest. Each of the 8 steps is held for
+// PULSE_DIVISOR ticks, giving a 2-second cycle at 8 Hz.
+//
+// Step layout (4 chars = top positions left to right):
+//   0: "    "  rest / blank
+//   1: " -- "  centre pair emerge (middle bars)
+//   2: "----"  all four bars
+//   3: "8888"  full brightness — peak
+//   4: "8888"  peak hold
+//   5: "----"  decay to bars
+//   6: " -- "  shrink to centre
+//   7: "    "  rest / blank
+#define PULSE_CYCLE_LEN 8
+static const char pulse_frames[PULSE_CYCLE_LEN][4] = {
+    {' ', ' ', ' ', ' '},
+    {' ', '-', '-', ' '},
+    {'-', '-', '-', '-'},
+    {'8', '8', '8', '8'},
+    {'8', '8', '8', '8'},
+    {'-', '-', '-', '-'},
+    {' ', '-', '-', ' '},
+    {' ', ' ', ' ', ' '},
+};
 
 // Day-of-week abbreviations (0=Monday...6=Sunday)
 static const char *_stebbs_dow_names[] = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"};
@@ -75,9 +92,9 @@ static void _update_scroll_text(stebbs_state_t *state) {
 static void _stebbs_display(stebbs_state_t *state) {
     char display_buf[11];
 
-    // Top 4 positions: wave — each offset by FLOP_WAVE_OFFSET frames
+    // Top 4 positions: heartbeat pulse — all positions change in unison
     for (int i = 0; i < 4; i++) {
-        display_buf[i] = flop_seq[(state->flop_frame + i * FLOP_WAVE_OFFSET) % FLOP_CYCLE_LEN];
+        display_buf[i] = pulse_frames[state->pulse_step][i];
     }
 
     // Bottom 6 positions: scrolling text
@@ -105,7 +122,7 @@ void stebbs_face_setup(uint8_t watch_face_index, void ** context_ptr) {
 void stebbs_face_activate(void *context) {
     stebbs_state_t *state = (stebbs_state_t *)context;
     state->tick_count = 0;
-    state->flop_frame = 0;
+    state->pulse_step = 0;
     state->scroll_pos = 0;
     _update_scroll_text(state);  // refresh time every time face is entered
     movement_request_tick_frequency(TICK_FREQUENCY);
@@ -123,9 +140,9 @@ bool stebbs_face_loop(movement_event_t event, void *context) {
             if (!state->paused) {
                 state->tick_count++;
 
-                // Advance flop every FLOP_DIVISOR ticks
-                if (state->tick_count % FLOP_DIVISOR == 0) {
-                    state->flop_frame = (state->flop_frame + 1) % FLOP_CYCLE_LEN;
+                // Advance pulse every PULSE_DIVISOR ticks
+                if (state->tick_count % PULSE_DIVISOR == 0) {
+                    state->pulse_step = (state->pulse_step + 1) % PULSE_CYCLE_LEN;
                 }
 
                 // Advance scroll every SCROLL_DIVISOR ticks
