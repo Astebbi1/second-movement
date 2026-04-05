@@ -26,6 +26,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "cook_face.h"
+#include "watch_common_display.h"
 
 /* --- Lookup table --------------------------------------------------------
  * oven_f   : recommended oven temperature in °F
