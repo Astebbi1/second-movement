@@ -373,6 +373,15 @@ void _display_coins(char* token, bool* bit_array, uint8_t length, toss_up_state_
 /** @brief coin animation
  */
 static void _coin_animation(toss_up_state_t *state) {
+    // Classic LCD: pixel coordinates are custom-LCD-specific; skip animation and show result immediately.
+    if (watch_get_lcd_type() != WATCH_LCD_TYPE_CUSTOM) {
+        state->animate = false;
+        state->animation = 0;
+        movement_request_tick_frequency(1);
+        watch_clear_indicator(WATCH_INDICATOR_BELL);
+        _play_coin_result(state);
+        return;
+    }
     bool heads = false;
     bool tails = false;
     for (uint8_t i = 0; i < state->coin_num; i++) {
@@ -797,6 +806,15 @@ static void _roll_dice_multiple(char* result, uint8_t* dice, uint8_t num_dice) {
 /** @brief dice animation
  */
 static void _dice_animation(toss_up_state_t *state) {
+    // Classic LCD: pixel coordinates are custom-LCD-specific; skip animation and show result immediately.
+    if (watch_get_lcd_type() != WATCH_LCD_TYPE_CUSTOM) {
+        state->animate = false;
+        state->animation = 0;
+        movement_request_tick_frequency(1);
+        watch_clear_indicator(WATCH_INDICATOR_BELL);
+        _play_dice_result(state);
+        return;
+    }
     watch_display_string("      ", 4);
     for (uint8_t i = 0; i < state->dice_num; i++) {
         watch_display_string("0",i*2 + 5);

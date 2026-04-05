@@ -70,7 +70,9 @@ typedef struct {
     char *segments;
     uint8_t x, y;
     uint32_t time_digits[6];
-    uint32_t illuminated_segments[MAX_ILLUMINATED_SEGMENTS][2]; 
+    uint32_t illuminated_segments[MAX_ILLUMINATED_SEGMENTS][2];
+    char date_top[6];     /* 5-char custom LCD top string (DOW+date) + NUL */
+    char date_classic[3]; /* 2-char classic LCD DOW fallback + NUL */
 } wyoscan_state_t;
 
 void wyoscan_face_setup(uint8_t watch_face_index, void ** context_ptr);

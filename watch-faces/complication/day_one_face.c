@@ -248,6 +248,7 @@ bool day_one_face_loop(movement_event_t event, void *context) {
                     break;
                 case DAY_ONE_PAGE_WEEKS_LEFT:
                     state->current_page = DAY_ONE_PAGE_DATE;
+                    watch_display_text_with_fallback(WATCH_POSITION_TOP_LEFT, "SET", "SE");
                     sprintf(buf, "%04d%02d%02d", state->birth_year % 10000, state->birth_month % 100, state->birth_day % 100);
                     watch_display_text(WATCH_POSITION_TOP_RIGHT, buf);
                     watch_display_text(WATCH_POSITION_HOURS,     buf + 2);

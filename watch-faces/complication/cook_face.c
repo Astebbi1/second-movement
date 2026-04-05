@@ -58,25 +58,46 @@ static const cook_item_t ITEMS[] = {
 
 static void _cook_display(cook_face_state_t *state) {
     const cook_item_t *item = &ITEMS[state->item_idx];
-    char bot[10];  /* snprintf sink — watch_display_text reads only 6 chars */
 
     /* Top row: food label */
     watch_display_text_with_fallback(WATCH_POSITION_TOP, item->top_custom, item->top_classic);
 
-    /* Bottom row alternates every 3 seconds: oven temp (H) / internal temp (T).
-     * Format " NNN H" puts the 3-digit number in big digits, unit letter in last
-     * seconds position. watch_set_decimal_if_available() gives the degree effect. */
-    if ((state->tick / 3) % 2 == 0) {
-        snprintf(bot, sizeof(bot), " %3u H", item->oven_f);
-    } else {
-        if (item->internal_f > 0) {
-            snprintf(bot, sizeof(bot), " %3u T", item->internal_f);
+    if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
+        /* Custom LCD: write 3-digit temp into hours+minutes positions, then
+         * draw the degree symbol (segment A = top bar of position 8) and the
+         * mode letter (H or T) into position 9. */
+        char num[5];
+        if (state->show_heat) {
+            snprintf(num, sizeof(num), "%4u", item->oven_f);
         } else {
-            snprintf(bot, sizeof(bot), "  -- T");
+            if (item->internal_f > 0) {
+                snprintf(num, sizeof(num), "%4u", item->internal_f);
+            } else {
+                snprintf(num, sizeof(num), "  --");
+            }
         }
+        /* Blank seconds area, then place digits in hours/minutes */
+        watch_display_text(WATCH_POSITION_SECONDS, "  ");
+        watch_display_text(WATCH_POSITION_HOURS,   num);
+        watch_display_text(WATCH_POSITION_MINUTES, num + 2);
+        /* Degree symbol: segment A (top bar) of the first seconds digit = pixel (3, 10) */
+        watch_set_pixel(3, 10);
+        /* Mode letter in position 9 (second seconds digit) */
+        watch_display_character(state->show_heat ? 'H' : 'T', 9);
+    } else {
+        /* Classic LCD fallback: plain text in bottom 6-char row */
+        char bot[10];
+        if (state->show_heat) {
+            snprintf(bot, sizeof(bot), " %3u H", item->oven_f);
+        } else {
+            if (item->internal_f > 0) {
+                snprintf(bot, sizeof(bot), " %3u T", item->internal_f);
+            } else {
+                snprintf(bot, sizeof(bot), "  -- T");
+            }
+        }
+        watch_display_text(WATCH_POSITION_BOTTOM, bot);
     }
-    watch_display_text(WATCH_POSITION_BOTTOM, bot);
-    watch_set_decimal_if_available();
 }
 
 void cook_face_setup(uint8_t watch_face_index, void **context_ptr) {
@@ -89,8 +110,7 @@ void cook_face_setup(uint8_t watch_face_index, void **context_ptr) {
 
 void cook_face_activate(void *context) {
     cook_face_state_t *state = (cook_face_state_t *)context;
-    state->tick = 0;
-    movement_request_tick_frequency(1);
+    state->show_heat = false; /* default: show target internal temp */
 }
 
 bool cook_face_loop(movement_event_t event, void *context) {
@@ -101,20 +121,18 @@ bool cook_face_loop(movement_event_t event, void *context) {
             _cook_display(state);
             break;
 
-        case EVENT_TICK:
-            state->tick++;
+        case EVENT_ALARM_BUTTON_UP:
+            state->item_idx = (state->item_idx + 1) % COOK_NUM_ITEMS;
             _cook_display(state);
             break;
 
-        case EVENT_ALARM_BUTTON_UP:
-            state->item_idx = (state->item_idx + 1) % COOK_NUM_ITEMS;
-            state->tick = 0;
+        case EVENT_LIGHT_BUTTON_UP:
+            state->show_heat = !state->show_heat;
             _cook_display(state);
             break;
 
         case EVENT_LIGHT_BUTTON_DOWN:
-            movement_illuminate_led();
-            break;
+            break; /* suppress LED; toggle happens on button up */
 
         case EVENT_TIMEOUT:
             movement_move_to_face(0);
@@ -133,5 +151,5 @@ bool cook_face_loop(movement_event_t event, void *context) {
 
 void cook_face_resign(void *context) {
     (void) context;
-    watch_clear_decimal_if_available();
+    if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) watch_clear_pixel(3, 10);
 }

@@ -24,6 +24,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include "wyoscan_face.h"
 #include "watch.h"
 
@@ -82,6 +83,10 @@ static const char *_wyoscan_dow_3[] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat",
 // 2-char fallback for classic LCD
 static const char *_wyoscan_dow_2[] = {"Mo", "tu", "WE", "tH", "Fr", "SA", "Su"};
 
+// Position indices used by watch_display_text_with_fallback(WATCH_POSITION_TOP, 5-char-str)
+// Custom LCD maps char[0..4] → LCD positions {0,1,10,2,3}
+static const uint8_t _top_positions[5] = {0, 1, 10, 2, 3};
+
 // Returns 0=Monday ... 6=Sunday using Zeller's congruence.
 // unit.year is years since 2020, so add 20 to get years since 2000.
 static uint8_t _wyoscan_dow(watch_date_time_t dt) {
@@ -91,13 +96,36 @@ static uint8_t _wyoscan_dow(watch_date_time_t dt) {
     return (dt.unit.day + 13 * (m + 1) / 5 + y + y / 4 + 525 - 2) % 7;
 }
 
-// Display day-of-week (3 chars) + day-of-month (2 digits) across the 5 top positions.
-// Uses the firmware character set so letters render correctly on the custom LCD.
-static void _wyoscan_show_date(watch_date_time_t dt) {
-    char top[6];
+// Store date strings into state from the given date-time.
+static void _wyoscan_store_date(wyoscan_state_t *state, watch_date_time_t dt) {
     uint8_t dow = _wyoscan_dow(dt);
-    sprintf(top, "%s%2d", _wyoscan_dow_3[dow], dt.unit.day);
-    watch_display_text_with_fallback(WATCH_POSITION_TOP, top, _wyoscan_dow_2[dow]);
+    sprintf(state->date_top, "%s%2d", _wyoscan_dow_3[dow], dt.unit.day);
+    strncpy(state->date_classic, _wyoscan_dow_2[dow], 3);
+}
+
+// Reveal top row chars 0..upto (0-based) from stored date strings.
+// Custom LCD: up to 5 chars at positions {0,1,10,2,3}.
+// Classic LCD: up to 2 chars at positions 0,1 (DOW only).
+static void _wyoscan_reveal_date_upto(wyoscan_state_t *state, uint8_t upto) {
+    if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
+        if (upto > 4) upto = 4;
+        for (uint8_t i = 0; i <= upto; i++)
+            watch_display_character(state->date_top[i], _top_positions[i]);
+    } else {
+        if (upto > 1) upto = 1;
+        for (uint8_t i = 0; i <= upto; i++)
+            watch_display_character(state->date_classic[i], i);
+    }
+}
+
+// Blank the top row.
+static void _wyoscan_blank_top(void) {
+    if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
+        for (uint8_t i = 0; i < 5; i++) watch_display_character(' ', _top_positions[i]);
+    } else {
+        watch_display_character(' ', 0);
+        watch_display_character(' ', 1);
+    }
 }
 
 /*
@@ -130,8 +158,17 @@ void wyoscan_face_setup(uint8_t watch_face_index, void ** context_ptr) {
 
 void wyoscan_face_activate(void *context) {
     wyoscan_state_t *state = (wyoscan_state_t *)context;
-    movement_request_tick_frequency(32);
     state->total_frames = 64;
+    if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
+        movement_request_tick_frequency(32);
+    } else {
+        movement_request_tick_frequency(1); /* classic: static display, 1 Hz is enough */
+    }
+    // Pre-populate date strings; show the full date statically on activation.
+    // The animation will blank and re-reveal it on the first tick cycle.
+    watch_date_time_t dt = movement_get_local_date_time();
+    _wyoscan_store_date(state, dt);
+    _wyoscan_reveal_date_upto(state, 4);
 }
 
 bool wyoscan_face_loop(movement_event_t event, void *context) {
@@ -139,19 +176,54 @@ bool wyoscan_face_loop(movement_event_t event, void *context) {
 
     watch_date_time_t date_time;
     switch (event.event_type) {
-        case EVENT_ACTIVATE: {
-            watch_date_time_t dt = movement_get_local_date_time();
-            _wyoscan_show_date(dt);
+        case EVENT_ACTIVATE:
+            // Date already shown by wyoscan_face_activate; nothing more to do.
             break;
-        }
         case EVENT_TICK:
+            // Classic LCD: static time display with 1-Hz indicator blink; skip pixel animation.
+            if (watch_get_lcd_type() != WATCH_LCD_TYPE_CUSTOM) {
+                date_time = movement_get_local_date_time();
+                _wyoscan_store_date(state, date_time);
+                _wyoscan_reveal_date_upto(state, 4);
+                {
+                    char tbuf[3];
+                    uint8_t h = date_time.unit.hour;
+                    if (!movement_clock_mode_24h()) { h = h % 12; if (h == 0) h = 12; }
+                    snprintf(tbuf, sizeof(tbuf), "%02u", (unsigned)h);
+                    watch_display_text(WATCH_POSITION_HOURS, tbuf);
+                    snprintf(tbuf, sizeof(tbuf), "%02u", (unsigned)date_time.unit.minute);
+                    watch_display_text(WATCH_POSITION_MINUTES, tbuf);
+                    snprintf(tbuf, sizeof(tbuf), "%02u", (unsigned)date_time.unit.second);
+                    watch_display_text(WATCH_POSITION_SECONDS, tbuf);
+                    bool blink_on = (date_time.unit.second % 2 == 0);
+                    if (blink_on) watch_set_colon(); else watch_clear_colon();
+                    bool is_pm = !movement_clock_mode_24h() && (date_time.unit.hour >= 12);
+                    if (is_pm) {
+                        if (blink_on) watch_set_indicator(WATCH_INDICATOR_PM);
+                        else          watch_clear_indicator(WATCH_INDICATOR_PM);
+                    } else {
+                        watch_clear_indicator(WATCH_INDICATOR_PM);
+                    }
+                    if (movement_alarm_enabled()) {
+                        if (blink_on) watch_set_indicator(WATCH_INDICATOR_BELL);
+                        else          watch_clear_indicator(WATCH_INDICATOR_BELL);
+                    } else {
+                        watch_clear_indicator(WATCH_INDICATOR_BELL);
+                    }
+                    if (blink_on) watch_set_indicator(WATCH_INDICATOR_SIGNAL);
+                    else          watch_clear_indicator(WATCH_INDICATOR_SIGNAL);
+                }
+                break;
+            }
             if (!state->animate) {
                 date_time = movement_get_local_date_time();
                 state->start = 0;
                 state->end = 0;
                 state->animation = 0;
                 state->animate = true;
-                _wyoscan_show_date(date_time);
+                // Store updated date strings and blank top row for animated reveal.
+                _wyoscan_store_date(state, date_time);
+                _wyoscan_blank_top();
                 {
                     uint8_t hour = date_time.unit.hour;
                     if (!movement_clock_mode_24h()) {
@@ -169,6 +241,33 @@ bool wyoscan_face_loop(movement_event_t event, void *context) {
                 if (state->time_digits[0] == 0) state->animation = 8;
             }
             if ( state->animate ) {
+                // Progressive top-row reveal: one char per 8-frame time-digit span.
+                // animation/8 = 0..7; chars are at positions {0,1,10,2,3} (custom) / {0,1} (classic).
+                if (state->animation % 8 == 0) {
+                    _wyoscan_reveal_date_upto(state, (uint8_t)(state->animation / 8));
+                }
+
+                // Blink PM, BELL, and SIGNAL indicators at 1 Hz (16 frames on / 16 off at 32 fps).
+                {
+                    watch_date_time_t blink_dt = movement_get_local_date_time();
+                    bool blink_on = (state->animation % 32) < 16;
+                    bool is_pm = !movement_clock_mode_24h() && (blink_dt.unit.hour >= 12);
+                    if (is_pm) {
+                        if (blink_on) watch_set_indicator(WATCH_INDICATOR_PM);
+                        else          watch_clear_indicator(WATCH_INDICATOR_PM);
+                    } else {
+                        watch_clear_indicator(WATCH_INDICATOR_PM);
+                    }
+                    if (movement_alarm_enabled()) {
+                        if (blink_on) watch_set_indicator(WATCH_INDICATOR_BELL);
+                        else          watch_clear_indicator(WATCH_INDICATOR_BELL);
+                    } else {
+                        watch_clear_indicator(WATCH_INDICATOR_BELL);
+                    }
+                    if (blink_on) watch_set_indicator(WATCH_INDICATOR_SIGNAL);
+                    else          watch_clear_indicator(WATCH_INDICATOR_SIGNAL);
+                }
+
                 // if we have reached the max number of illuminated segments, we clear the oldest one
                 if ((state->end + 1) % MAX_ILLUMINATED_SEGMENTS == state->start) {
                     // clear the oldest pixel if it's not 'X'
@@ -245,6 +344,7 @@ bool wyoscan_face_loop(movement_event_t event, void *context) {
 
 void wyoscan_face_resign(void *context) {
     (void) context;
-
-    // handle any cleanup before your watch face goes off-screen.
+    watch_clear_indicator(WATCH_INDICATOR_PM);
+    watch_clear_indicator(WATCH_INDICATOR_BELL);
+    watch_clear_indicator(WATCH_INDICATOR_SIGNAL);
 }

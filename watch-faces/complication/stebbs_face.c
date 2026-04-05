@@ -168,7 +168,7 @@ bool stebbs_face_loop(movement_event_t event, void *context) {
             }
             sprintf(time_buf, "%2d-%02d ", hour, date_time.unit.minute);
             watch_display_text(WATCH_POSITION_BOTTOM, time_buf);
-            watch_display_text(WATCH_POSITION_TOP, "Stb ");
+            watch_display_text_with_fallback(WATCH_POSITION_TOP, "Stb  ", "Sb");
             break;
         }
 

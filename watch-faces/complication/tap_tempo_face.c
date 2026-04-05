@@ -109,7 +109,7 @@ static void _tap_tempo_display(tap_tempo_state_t *state) {
         top[3] = pend[2];
         top[4] = pend[3];
         top[5] = '\0';
-        watch_display_text_with_fallback(WATCH_POSITION_TOP, top, "    ");
+        watch_display_text_with_fallback(WATCH_POSITION_TOP, top, "tAP");
 
         // Bottom row: BPM + beat counter at positions 4-9
         char bot[7];
