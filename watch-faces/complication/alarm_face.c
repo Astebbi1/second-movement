@@ -40,7 +40,7 @@ typedef enum {
     alarm_setting_idx_beeps
 } alarm_setting_idx_t;
 
-static const char _dow_strings[ALARM_DAY_STATES + 1][2] = {"AL", "MO", "TU", "WE", "TH", "FR", "SA", "SO", "ED", "1t", "MF", "WN"};
+static const char _dow_strings[ALARM_DAY_STATES + 1][2] = {"AL", "MO", "TU", "WE", "TH", "FR", "SA", "SU", "Ed", "1t", "MF", "WE"};
 static const uint8_t _blink_idx[ALARM_SETTING_STATES] = {2, 0, 4, 6, 8, 9};
 static const uint8_t _blink_idx2[ALARM_SETTING_STATES] = {3, 1, 5, 7, 8, 9};
 static const watch_buzzer_note_t _buzzer_notes[3] = {BUZZER_NOTE_B6, BUZZER_NOTE_C8, BUZZER_NOTE_A8};
@@ -105,17 +105,19 @@ static void _alarm_face_draw(alarm_state_t *state, uint8_t subsecond) {
     watch_display_character(' ', 10);  // clear stale 3rd top-row position on custom LCD
 
     if (state->is_setting) {
-        // draw pitch level indicator
-        if ((subsecond % 2) == 0 || (state->setting_state != alarm_setting_idx_pitch)) {
-            if (state->alarm[state->alarm_idx].pitch == 3) {
-                // melody mode: show bell indicator and all 3 pitch pixels
-                watch_set_indicator(WATCH_INDICATOR_BELL);
-                for (i = 0; i < 3; i++)
-                    watch_set_pixel(_buzzer_segdata[i][0], _buzzer_segdata[i][1]);
-            } else {
-                watch_clear_indicator(WATCH_INDICATOR_BELL);
-                for (i = 0; i <= state->alarm[state->alarm_idx].pitch && i < 3; i++)
-                    watch_set_pixel(_buzzer_segdata[i][0], _buzzer_segdata[i][1]);
+        // draw pitch level indicator (custom LCD only — classic LCD has no safe pixel area)
+        if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
+            if ((subsecond % 2) == 0 || (state->setting_state != alarm_setting_idx_pitch)) {
+                if (state->alarm[state->alarm_idx].pitch == 3) {
+                    // melody mode: show bell indicator and all 3 pitch pixels
+                    watch_set_indicator(WATCH_INDICATOR_BELL);
+                    for (i = 0; i < 3; i++)
+                        watch_set_pixel(_buzzer_segdata[i][0], _buzzer_segdata[i][1]);
+                } else {
+                    watch_clear_indicator(WATCH_INDICATOR_BELL);
+                    for (i = 0; i <= state->alarm[state->alarm_idx].pitch && i < 3; i++)
+                        watch_set_pixel(_buzzer_segdata[i][0], _buzzer_segdata[i][1]);
+                }
             }
         }
         // draw beep rounds / melody indicator

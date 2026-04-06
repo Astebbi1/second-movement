@@ -102,13 +102,6 @@ static void _wyoscan_store_date(wyoscan_state_t *state, watch_date_time_t dt) {
     strncpy(state->date_classic, _wyoscan_dow_2[dow], 3);
 }
 
-// Reveal top row chars 0..upto from stored date strings (classic LCD only).
-static void _wyoscan_reveal_date_upto(wyoscan_state_t *state, uint8_t upto) {
-    if (upto > 1) upto = 1;
-    for (uint8_t i = 0; i <= upto; i++)
-        watch_display_character(state->date_classic[i], i);
-}
-
 // Blank the top row (custom LCD).
 static void _wyoscan_blank_top(void) {
     for (uint8_t i = 0; i < 5; i++) watch_display_character(' ', _top_positions[i]);
@@ -167,10 +160,25 @@ void wyoscan_face_activate(void *context) {
         for (uint8_t i = 0; i < 5; i++)
             watch_display_character(state->date_top[i], _top_positions[i]);
     } else {
-        movement_request_tick_frequency(1);
+        // Classic LCD: 4 Hz sweep animation.  Show a static full display immediately,
+        // then the first tick will start the left-to-right reveal cycle.
+        movement_request_tick_frequency(4);
         watch_date_time_t dt = movement_get_local_date_time();
         _wyoscan_store_date(state, dt);
-        _wyoscan_reveal_date_upto(state, 1);
+        state->animation = 0;
+        uint8_t h = dt.unit.hour;
+        bool is_pm = !movement_clock_mode_24h() && (h >= 12);
+        if (!movement_clock_mode_24h()) { h = h % 12; if (h == 0) h = 12; }
+        char buf[11];
+        snprintf(buf, sizeof(buf), "%c%c%2u%2u%02u%02u",
+            state->date_classic[0], state->date_classic[1],
+            (unsigned)dt.unit.day, (unsigned)h,
+            (unsigned)dt.unit.minute, (unsigned)dt.unit.second);
+        watch_display_text(WATCH_POSITION_FULL, buf);
+        watch_set_colon();
+        if (is_pm) watch_set_indicator(WATCH_INDICATOR_PM);
+        if (movement_alarm_enabled()) watch_set_indicator(WATCH_INDICATOR_BELL);
+        watch_set_indicator(WATCH_INDICATOR_SIGNAL);
     }
 }
 
@@ -184,39 +192,59 @@ bool wyoscan_face_loop(movement_event_t event, void *context) {
             break;
 
         case EVENT_TICK:
-            // ── Classic LCD: static 1-Hz display ──────────────────────────────
+            // ── Classic LCD: left-to-right sweep animation at 4 Hz ───────────
+            // 8-phase cycle (0.25 s/phase = 2 s/cycle):
+            //   0: clear + DOW  1: date day  2: hour + colon  3: minute
+            //   4: second + indicators (full display)  5-7: hold, update seconds
             if (watch_get_lcd_type() != WATCH_LCD_TYPE_CUSTOM) {
-                date_time = movement_get_local_date_time();
-                _wyoscan_store_date(state, date_time);
-                _wyoscan_reveal_date_upto(state, 1);
-                {
-                    char tbuf[3];
+                uint8_t phase = state->animation;
+                char buf[3];
+                if (phase == 0) {
+                    // Snapshot time; clear display; reveal DOW only.
+                    date_time = movement_get_local_date_time();
+                    _wyoscan_store_date(state, date_time);
                     uint8_t h = date_time.unit.hour;
+                    bool is_pm = !movement_clock_mode_24h() && (h >= 12);
                     if (!movement_clock_mode_24h()) { h = h % 12; if (h == 0) h = 12; }
-                    snprintf(tbuf, sizeof(tbuf), "%02u", (unsigned)h);
-                    watch_display_text(WATCH_POSITION_HOURS, tbuf);
-                    snprintf(tbuf, sizeof(tbuf), "%02u", (unsigned)date_time.unit.minute);
-                    watch_display_text(WATCH_POSITION_MINUTES, tbuf);
-                    snprintf(tbuf, sizeof(tbuf), "%02u", (unsigned)date_time.unit.second);
-                    watch_display_text(WATCH_POSITION_SECONDS, tbuf);
-                    bool blink_on = (date_time.unit.second % 2 == 0);
-                    if (blink_on) watch_set_colon(); else watch_clear_colon();
-                    bool is_pm = !movement_clock_mode_24h() && (date_time.unit.hour >= 12);
-                    if (is_pm) {
-                        if (blink_on) watch_set_indicator(WATCH_INDICATOR_PM);
-                        else          watch_clear_indicator(WATCH_INDICATOR_PM);
-                    } else {
-                        watch_clear_indicator(WATCH_INDICATOR_PM);
-                    }
-                    if (movement_alarm_enabled()) {
-                        if (blink_on) watch_set_indicator(WATCH_INDICATOR_BELL);
-                        else          watch_clear_indicator(WATCH_INDICATOR_BELL);
-                    } else {
-                        watch_clear_indicator(WATCH_INDICATOR_BELL);
-                    }
-                    if (blink_on) watch_set_indicator(WATCH_INDICATOR_SIGNAL);
-                    else          watch_clear_indicator(WATCH_INDICATOR_SIGNAL);
+                    state->time_digits[0] = h;
+                    state->time_digits[1] = date_time.unit.minute;
+                    state->time_digits[2] = date_time.unit.second;
+                    state->time_digits[3] = date_time.unit.day;
+                    state->time_digits[4] = is_pm ? 1 : 0;
+                    watch_display_text(WATCH_POSITION_FULL, "          ");
+                    watch_clear_colon();
+                    watch_clear_indicator(WATCH_INDICATOR_PM);
+                    watch_clear_indicator(WATCH_INDICATOR_BELL);
+                    watch_clear_indicator(WATCH_INDICATOR_SIGNAL);
+                    watch_display_character(state->date_classic[0], 0);
+                    watch_display_character(state->date_classic[1], 1);
+                } else if (phase == 1) {
+                    // Reveal: date day of month.
+                    snprintf(buf, sizeof(buf), "%2u", (unsigned)state->time_digits[3]);
+                    watch_display_text(WATCH_POSITION_TOP_RIGHT, buf);
+                } else if (phase == 2) {
+                    // Reveal: hour + colon.
+                    snprintf(buf, sizeof(buf), "%2u", (unsigned)state->time_digits[0]);
+                    watch_display_text(WATCH_POSITION_HOURS, buf);
+                    watch_set_colon();
+                } else if (phase == 3) {
+                    // Reveal: minute.
+                    snprintf(buf, sizeof(buf), "%02u", (unsigned)state->time_digits[1]);
+                    watch_display_text(WATCH_POSITION_MINUTES, buf);
+                } else if (phase == 4) {
+                    // Reveal: second — display now complete; set indicators.
+                    snprintf(buf, sizeof(buf), "%02u", (unsigned)state->time_digits[2]);
+                    watch_display_text(WATCH_POSITION_SECONDS, buf);
+                    if (state->time_digits[4]) watch_set_indicator(WATCH_INDICATOR_PM);
+                    if (movement_alarm_enabled()) watch_set_indicator(WATCH_INDICATOR_BELL);
+                    watch_set_indicator(WATCH_INDICATOR_SIGNAL);
+                } else {
+                    // Hold phases 5-7: update seconds live.
+                    date_time = movement_get_local_date_time();
+                    snprintf(buf, sizeof(buf), "%02u", (unsigned)date_time.unit.second);
+                    watch_display_text(WATCH_POSITION_SECONDS, buf);
                 }
+                state->animation = (state->animation + 1) % 8;
                 break;
             }
 

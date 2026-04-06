@@ -52,7 +52,7 @@
 #include "movement.h"
 
 // Maximum number of events supported (increase if needed)
-#define NXTUP_MAX_EVENTS 52
+#define NXTUP_MAX_EVENTS 64
 
 typedef struct {
     uint8_t  current_idx;                   // position in sorted list currently shown

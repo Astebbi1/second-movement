@@ -35,6 +35,11 @@ static uint32_t _day_one_face_juliandaynum(uint16_t year, uint16_t month, uint16
 
 static void _day_one_face_show_count(uint32_t count, const char *top_custom, const char *top_classic) {
     watch_display_text_with_fallback(WATCH_POSITION_TOP, top_custom, top_classic);
+    /* On classic LCD, WATCH_POSITION_TOP only writes positions 0,1.
+     * Explicitly clear positions 2,3 (TOP_RIGHT) so stale content from
+     * the DATE page (which writes the birth year there) doesn't persist. */
+    if (watch_get_lcd_type() != WATCH_LCD_TYPE_CUSTOM)
+        watch_display_text(WATCH_POSITION_TOP_RIGHT, "  ");
     if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
         char num_buf[5];
         if (count >= 10000) {

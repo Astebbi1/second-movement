@@ -104,8 +104,10 @@ static const char *_nxtup_month_names[] = {
     "JuL","AuG","SEP","OCt","noV","dEC"
 };
 
-// Builds "name DOW Mon day  " into state->scroll_buf.
-// The trailing 2 spaces act as the gap before the loop repeats.
+// Builds the scroll string into state->scroll_buf.
+// Custom LCD: "   name DOW Mon day  " — days shown in top-right, no need in scroll.
+// Classic LCD: "   name DOW Mon day -Xd  " — days appended since classic has no top-right.
+// Trailing 2 spaces act as the gap before the loop repeats.
 // Also resets scroll_pos to 0.
 static void _build_scroll_string(nxtup_state_t *state) {
     uint8_t orig_idx = state->sorted_order[state->current_idx];
@@ -119,12 +121,24 @@ static void _build_scroll_string(nxtup_state_t *state) {
     uint32_t event_jdn = today_jdn + days;
     uint8_t  dow = (uint8_t)((event_jdn + 1) % 7);
 
-    snprintf(state->scroll_buf, sizeof(state->scroll_buf),
-             "   %s %s %s %u  ",
-             ev->name,
-             _nxtup_dow_names[dow],
-             _nxtup_month_names[ev->month],
-             ev->day);
+    if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
+        snprintf(state->scroll_buf, sizeof(state->scroll_buf),
+                 "   %s %s %s %u  ",
+                 ev->name,
+                 _nxtup_dow_names[dow],
+                 _nxtup_month_names[ev->month],
+                 ev->day);
+    } else {
+        // Classic LCD: append " -Xd" so the days count scrolls past with the event.
+        unsigned disp_days = days > 365 ? 365 : days;
+        snprintf(state->scroll_buf, sizeof(state->scroll_buf),
+                 "   %s %s %s %u -%ud  ",
+                 ev->name,
+                 _nxtup_dow_names[dow],
+                 _nxtup_month_names[ev->month],
+                 ev->day,
+                 disp_days);
+    }
     state->scroll_buf_len = (uint8_t)strlen(state->scroll_buf);
     state->scroll_pos = 0;
 }
