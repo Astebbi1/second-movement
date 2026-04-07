@@ -62,6 +62,7 @@ typedef struct {
     char     scroll_buf[56];                // "name DOW Mon day  " — built per event
     uint8_t  scroll_buf_len;                // strlen(scroll_buf)
     uint8_t  scroll_pos;                    // current scroll offset into scroll_buf
+    uint8_t  scroll_tick;                   // sub-tick counter for classic LCD 375ms pacing
 } nxtup_state_t;
 
 void nxtup_face_setup(uint8_t watch_face_index, void **context_ptr);

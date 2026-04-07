@@ -49,6 +49,8 @@ typedef struct {
     uint8_t tick_count;           // Raw tick counter (for scroll/pulse rate divisors)
     bool paused;                  // Animation paused
     char scroll_text[STEBBS_SCROLL_TEXT_LEN]; // Pre-built scroll text with current time
+    bool show_build_date;         // Showing build date / time overlay on bottom chars
+    uint8_t build_date_ticks;     // Tick counter: phase 1 = build date, phase 2 = live time
 } stebbs_state_t;
 
 void stebbs_face_setup(uint8_t watch_face_index, void ** context_ptr);

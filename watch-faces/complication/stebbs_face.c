@@ -34,6 +34,10 @@
 // Pulse advances every 2 ticks → 4 steps/sec, 8-step cycle = 2 sec/pulse
 #define PULSE_DIVISOR      2
 
+// Build-date overlay: 3 seconds of build date then 3 seconds of live time
+#define BUILD_DATE_PHASE1  (3 * TICK_FREQUENCY)   // ticks before switching to time
+#define BUILD_DATE_TOTAL   (6 * TICK_FREQUENCY)   // ticks before dismissing
+
 // 5 leading / 3 trailing spaces — extra lead-in so text doesn't appear abruptly
 // Full text: "     StEbbS WAtCH  MON Feb 23   " = 32 chars
 #define SCROLL_CONTENT_LEN 32
@@ -81,6 +85,25 @@ static uint8_t _stebbs_dow(watch_date_time_t dt) {
     return (dt.unit.day + 13 * (m + 1) / 5 + y + y / 4 + 525 - 2) % 7;
 }
 
+// Parse __DATE__ ("Mmm  D YYYY" or "Mmm DD YYYY") into "DD-MM-YY" (8 chars + NUL).
+// ':' is blank on the classic LCD, so '-' is used as separator instead.
+static void _stebbs_build_date_str(char out[9]) {
+    static const char _mon_table[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+    const char *d = __DATE__;
+    uint8_t month = 0;
+    for (uint8_t i = 0; i < 12; i++) {
+        if (d[0] == _mon_table[i*3] && d[1] == _mon_table[i*3+1] && d[2] == _mon_table[i*3+2]) {
+            month = i + 1;
+            break;
+        }
+    }
+    // d[4..5] = space-padded day ("  7" → d[4]=' ', d[5]='7'; " 17" → d[4]='1', d[5]='7')
+    uint8_t day  = ((d[4] == ' ') ? 0 : (uint8_t)(d[4] - '0')) * 10 + (uint8_t)(d[5] - '0');
+    // d[9..10] = last two digits of 4-digit year
+    uint8_t year = (uint8_t)(d[9] - '0') * 10 + (uint8_t)(d[10] - '0');
+    snprintf(out, 9, "%02d-%02d-%02d", day, month, year);
+}
+
 static void _update_scroll_text(stebbs_state_t *state) {
     watch_date_time_t date_time = movement_get_local_date_time();
     uint8_t dow = _stebbs_dow(date_time);
@@ -92,12 +115,39 @@ static void _update_scroll_text(stebbs_state_t *state) {
 static void _stebbs_display(stebbs_state_t *state) {
     char display_buf[11];
 
-    // Top 4 positions: heartbeat pulse — all positions change in unison
+    if (state->show_build_date) {
+        // Heartbeat continues in positions 0-3; positions 4-9 show the overlay.
+        for (int i = 0; i < 4; i++) {
+            display_buf[i] = pulse_frames[state->pulse_step][i];
+        }
+
+        if (state->build_date_ticks < BUILD_DATE_PHASE1) {
+            // Phase 1: build date "DDMMYY" (compile-time constant, no separators)
+            char bd[9];
+            _stebbs_build_date_str(bd);
+            // bd is "DD-MM-YY"; extract only the 6 digit chars
+            display_buf[4] = bd[0]; display_buf[5] = bd[1];
+            display_buf[6] = bd[3]; display_buf[7] = bd[4];
+            display_buf[8] = bd[6]; display_buf[9] = bd[7];
+        } else {
+            // Phase 2: build time "HHMMSS" from __TIME__ ("HH:MM:SS", no separators)
+            const char *t = __TIME__;
+            display_buf[4] = t[0]; display_buf[5] = t[1];
+            display_buf[6] = t[3]; display_buf[7] = t[4];
+            display_buf[8] = t[6]; display_buf[9] = t[7];
+        }
+
+        display_buf[10] = '\0';
+        watch_clear_colon();
+        watch_display_text(WATCH_POSITION_FULL, display_buf);
+        return;
+    }
+
+    // Normal display: top 4 positions heartbeat, bottom 6 scrolling text
     for (int i = 0; i < 4; i++) {
         display_buf[i] = pulse_frames[state->pulse_step][i];
     }
 
-    // Bottom 6 positions: scrolling text
     for (int i = 0; i < 6; i++) {
         int idx = (int)state->scroll_pos + i;
         display_buf[4 + i] = (idx < SCROLL_CONTENT_LEN) ? state->scroll_text[idx] : ' ';
@@ -124,6 +174,8 @@ void stebbs_face_activate(void *context) {
     state->tick_count = 0;
     state->pulse_step = 0;
     state->scroll_pos = 0;
+    state->show_build_date = false;
+    state->build_date_ticks = 0;
     _update_scroll_text(state);  // refresh time every time face is entered
     movement_request_tick_frequency(TICK_FREQUENCY);
 }
@@ -137,6 +189,14 @@ bool stebbs_face_loop(movement_event_t event, void *context) {
             break;
 
         case EVENT_TICK:
+            // Build-date overlay timeout counts regardless of pause state
+            if (state->show_build_date) {
+                state->build_date_ticks++;
+                if (state->build_date_ticks >= BUILD_DATE_TOTAL) {
+                    state->show_build_date = false;
+                }
+            }
+
             if (!state->paused) {
                 state->tick_count++;
 
@@ -160,6 +220,13 @@ bool stebbs_face_loop(movement_event_t event, void *context) {
         case EVENT_ALARM_BUTTON_UP:
             // Toggle pause
             state->paused = !state->paused;
+            break;
+
+        case EVENT_ALARM_LONG_PRESS:
+            // Show build date (phase 1) then live time (phase 2) overlay
+            state->show_build_date = true;
+            state->build_date_ticks = 0;
+            _stebbs_display(state);
             break;
 
         case EVENT_LIGHT_BUTTON_UP:

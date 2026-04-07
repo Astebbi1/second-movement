@@ -196,31 +196,32 @@ static void low_energy_setting_advance(void) {
 }
 
 static void led_duration_setting_display(uint8_t subsecond) {
-    char buf[8];
-
     watch_display_text_with_fallback(WATCH_POSITION_TOP_LEFT, "LED", "LT");
     if (subsecond % 2) {
-        if (movement_get_backlight_dwell() == 0) {
+        uint8_t dwell = movement_get_backlight_dwell();
+        if (dwell == 0) {
             watch_display_text(WATCH_POSITION_BOTTOM, "instnt");
-        } else if (movement_get_backlight_dwell() == 0b111) {
-            watch_display_text(WATCH_POSITION_BOTTOM, "no LEd");
-        } else if (movement_get_backlight_dwell() == 4) {
+        } else if (dwell == 1) {
+            watch_display_text(WATCH_POSITION_BOTTOM, " 3 SeC");
+        } else if (dwell == 2) {
+            watch_display_text(WATCH_POSITION_BOTTOM, " 5 SeC");
+        } else if (dwell == 3) {
             watch_display_text(WATCH_POSITION_BOTTOM, "rAinbO");
-        } else if (movement_get_backlight_dwell() == 5) {
+        } else if (dwell == 4) {
+            watch_display_text(WATCH_POSITION_BOTTOM, "rAin 2");
+        } else if (dwell == 5) {
+            watch_display_text(WATCH_POSITION_BOTTOM, "nIGht ");
+        } else if (dwell == 6) {
             watch_display_text(WATCH_POSITION_BOTTOM, "toGGLE");
         } else {
-            sprintf(buf, " %1d SeC", (movement_get_backlight_dwell() * 2 - 1) % 10);
-            watch_display_text(WATCH_POSITION_BOTTOM, buf);
+            watch_display_text(WATCH_POSITION_BOTTOM, "no LEd");
         }
     }
 }
 
 static void led_duration_setting_advance(void) {
+    // Values 0-6 + 7(no LED); 3-bit field: 7+1 overflows to 0 naturally
     movement_set_backlight_dwell(movement_get_backlight_dwell() + 1);
-    if (movement_get_backlight_dwell() > 5) {
-        // skip unused value 6; 0b111 wraps back to 0 (instant) on next press
-        movement_set_backlight_dwell(0b111);
-    }
 }
 
 static void red_led_setting_display(uint8_t subsecond) {

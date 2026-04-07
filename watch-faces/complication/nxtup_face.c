@@ -147,7 +147,7 @@ static void _build_scroll_string(nxtup_state_t *state) {
 
 static void _nxtup_update_display(nxtup_state_t *state) {
     if (state->event_count == 0) {
-        watch_display_text_with_fallback(WATCH_POSITION_TOP, "NX---", "NX");
+        watch_display_text_with_fallback(WATCH_POSITION_TOP, "NX---", "NU");
         watch_display_text(WATCH_POSITION_BOTTOM, "nO EVt");
         return;
     }
@@ -159,7 +159,7 @@ static void _nxtup_update_display(nxtup_state_t *state) {
     char top_buf[6];
     unsigned disp_days = days > 365 ? 365 : days;
     snprintf(top_buf, sizeof(top_buf), "NX%3u", disp_days);
-    watch_display_text_with_fallback(WATCH_POSITION_TOP, top_buf, "NX");
+    watch_display_text_with_fallback(WATCH_POSITION_TOP, top_buf, "NU");
 
     // Bottom: 6-char window into the scroll string, wraps seamlessly via modulo
     uint8_t len = state->scroll_buf_len;
@@ -189,7 +189,9 @@ void nxtup_face_activate(void *context) {
     _build_sorted_list(state);
     state->current_idx = 0;
     _build_scroll_string(state);
-    movement_request_tick_frequency(4); // 4 Hz — matches stebbs_face scroll speed
+    // Classic LCD: 8 Hz ticks, advance scroll every 3rd tick = 375 ms/char.
+    // Custom LCD: 4 Hz ticks, advance every tick = 250 ms/char.
+    movement_request_tick_frequency((watch_get_lcd_type() == WATCH_LCD_TYPE_CLASSIC) ? 8 : 4);
 }
 
 bool nxtup_face_loop(movement_event_t event, void *context) {
@@ -202,6 +204,13 @@ bool nxtup_face_loop(movement_event_t event, void *context) {
 
         case EVENT_TICK:
             if (state->event_count == 0) break;
+
+            // Classic LCD runs at 8 Hz; only advance scroll every 3rd tick (375 ms/char).
+            // Custom LCD runs at 4 Hz and advances every tick (250 ms/char).
+            if (watch_get_lcd_type() == WATCH_LCD_TYPE_CLASSIC) {
+                state->scroll_tick = (state->scroll_tick + 1) % 3;
+                if (state->scroll_tick != 0) break;
+            }
 
             // Advance scroll one position per tick
             state->scroll_pos = (state->scroll_pos + 1) % state->scroll_buf_len;

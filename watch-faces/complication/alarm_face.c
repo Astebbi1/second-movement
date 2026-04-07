@@ -40,7 +40,7 @@ typedef enum {
     alarm_setting_idx_beeps
 } alarm_setting_idx_t;
 
-static const char _dow_strings[ALARM_DAY_STATES + 1][2] = {"AL", "MO", "TU", "WE", "TH", "FR", "SA", "SU", "Ed", "1t", "MF", "WE"};
+static const char _dow_strings[ALARM_DAY_STATES + 1][2] = {"AL", "Mn", "TU", "WE", "TH", "FR", "SA", "SU", "Ed", "1t", "MF", "WE"};
 static const uint8_t _blink_idx[ALARM_SETTING_STATES] = {2, 0, 4, 6, 8, 9};
 static const uint8_t _blink_idx2[ALARM_SETTING_STATES] = {3, 1, 5, 7, 8, 9};
 static const watch_buzzer_note_t _buzzer_notes[3] = {BUZZER_NOTE_B6, BUZZER_NOTE_C8, BUZZER_NOTE_A8};
@@ -102,7 +102,6 @@ static void _alarm_face_draw(alarm_state_t *state, uint8_t subsecond) {
         buf[_blink_idx[state->setting_state]] = buf[_blink_idx2[state->setting_state]] = ' ';
     }
     watch_display_text(WATCH_POSITION_FULL, buf);
-    watch_display_character(' ', 10);  // clear stale 3rd top-row position on custom LCD
 
     if (state->is_setting) {
         // draw pitch level indicator (custom LCD only — classic LCD has no safe pixel area)
