@@ -176,7 +176,7 @@ bool bubble_level_face_loop(movement_event_t event, void *context) {
             break;
 
         case EVENT_ALARM_BUTTON_UP:
-            /* Cycle X → Y → 2D → X */
+            /* Cycle Y → X → 2D → Y */
             state->mode = (bubble_mode_t)((state->mode + 1) % 3);
             switch (state->mode) {
                 case BUBBLE_MODE_X:  watch_display_text(WATCH_POSITION_BOTTOM, "  X   "); break;

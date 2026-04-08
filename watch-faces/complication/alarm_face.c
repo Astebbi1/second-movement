@@ -40,7 +40,7 @@ typedef enum {
     alarm_setting_idx_beeps
 } alarm_setting_idx_t;
 
-static const char _dow_strings[ALARM_DAY_STATES + 1][2] = {"AL", "MO", "TU", "WE", "TH", "FR", "SA", "SO", "ED", "1t", "MF", "WN"};
+static const char _dow_strings[ALARM_DAY_STATES + 1][2] = {"AL", "Mn", "TU", "WE", "TH", "FR", "SA", "SU", "Ed", "1t", "MF", "WE"};
 static const uint8_t _blink_idx[ALARM_SETTING_STATES] = {2, 0, 4, 6, 8, 9};
 static const uint8_t _blink_idx2[ALARM_SETTING_STATES] = {3, 1, 5, 7, 8, 9};
 static const watch_buzzer_note_t _buzzer_notes[3] = {BUZZER_NOTE_B6, BUZZER_NOTE_C8, BUZZER_NOTE_A8};
@@ -102,20 +102,21 @@ static void _alarm_face_draw(alarm_state_t *state, uint8_t subsecond) {
         buf[_blink_idx[state->setting_state]] = buf[_blink_idx2[state->setting_state]] = ' ';
     }
     watch_display_text(WATCH_POSITION_FULL, buf);
-    watch_display_character(' ', 10);  // clear stale 3rd top-row position on custom LCD
 
     if (state->is_setting) {
-        // draw pitch level indicator
-        if ((subsecond % 2) == 0 || (state->setting_state != alarm_setting_idx_pitch)) {
-            if (state->alarm[state->alarm_idx].pitch == 3) {
-                // melody mode: show bell indicator and all 3 pitch pixels
-                watch_set_indicator(WATCH_INDICATOR_BELL);
-                for (i = 0; i < 3; i++)
-                    watch_set_pixel(_buzzer_segdata[i][0], _buzzer_segdata[i][1]);
-            } else {
-                watch_clear_indicator(WATCH_INDICATOR_BELL);
-                for (i = 0; i <= state->alarm[state->alarm_idx].pitch && i < 3; i++)
-                    watch_set_pixel(_buzzer_segdata[i][0], _buzzer_segdata[i][1]);
+        // draw pitch level indicator (custom LCD only — classic LCD has no safe pixel area)
+        if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
+            if ((subsecond % 2) == 0 || (state->setting_state != alarm_setting_idx_pitch)) {
+                if (state->alarm[state->alarm_idx].pitch == 3) {
+                    // melody mode: show bell indicator and all 3 pitch pixels
+                    watch_set_indicator(WATCH_INDICATOR_BELL);
+                    for (i = 0; i < 3; i++)
+                        watch_set_pixel(_buzzer_segdata[i][0], _buzzer_segdata[i][1]);
+                } else {
+                    watch_clear_indicator(WATCH_INDICATOR_BELL);
+                    for (i = 0; i <= state->alarm[state->alarm_idx].pitch && i < 3; i++)
+                        watch_set_pixel(_buzzer_segdata[i][0], _buzzer_segdata[i][1]);
+                }
             }
         }
         // draw beep rounds / melody indicator
@@ -261,8 +262,22 @@ void alarm_face_setup(uint8_t watch_face_index, void **context_ptr) {
         state->alarm[2].pitch = 3;
         state->alarm[2].beeps = 3;  // Tetris
         state->alarm[2].enabled = true;
+        // Alarm 4: 9:01pm every day, Gambler melody
+        state->alarm[3].day = ALARM_DAY_EACH_DAY;
+        state->alarm[3].hour = 21;
+        state->alarm[3].minute = 1;
+        state->alarm[3].pitch = 3;  // melody mode
+        state->alarm[3].beeps = 0;  // Gambler
+        state->alarm[3].enabled = true;
+        // Alarm 5: 8:50am weekdays, Carmen melody
+        state->alarm[4].day = ALARM_DAY_WORKDAY;
+        state->alarm[4].hour = 8;
+        state->alarm[4].minute = 50;
+        state->alarm[4].pitch = 3;  // melody mode
+        state->alarm[4].beeps = 6;  // Carmen
+        state->alarm[4].enabled = true;
         // Remaining slots: generic defaults
-        for (uint8_t i = 3; i < ALARM_ALARMS; i++) {
+        for (uint8_t i = 5; i < ALARM_ALARMS; i++) {
             state->alarm[i].day = ALARM_DAY_EACH_DAY;
             state->alarm[i].beeps = 5;
             state->alarm[i].pitch = 1;

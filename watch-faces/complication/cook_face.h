@@ -31,12 +31,13 @@
  *
  * A quick-reference cooking temperature guide.
  *
- * Top row shows the food type. Bottom row alternates each second between:
- *   ov XXX  — recommended oven temperature (°F)
- *   in XXX  — target internal temperature (°F); shows "in n/A" if not applicable
+ * Top row shows the food type. Bottom row shows one of:
+ *   NNN°T  — target internal temperature (°F)  [default on activation]
+ *   NNN°H  — recommended oven/heat temperature (°F)
+ *   "--°T" if internal temp not applicable
  *
  * ALARM button: next food item
- * LIGHT button: LED
+ * LIGHT button: toggle between target temp (T) and oven/heat temp (H)
  *
  * Items (in order):
  *   beef rare, beef med-rare, beef medium, beef well,
@@ -45,7 +46,7 @@
 
 typedef struct {
     uint8_t item_idx;   /* 0 – (COOK_NUM_ITEMS-1) */
-    uint8_t tick;       /* toggles 0/1 each second for oven/internal alternation */
+    bool    show_heat;  /* false = target internal temp (T), true = oven/heat temp (H) */
 } cook_face_state_t;
 
 void cook_face_setup(uint8_t watch_face_index, void **context_ptr);

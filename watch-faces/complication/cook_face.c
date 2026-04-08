@@ -58,19 +58,19 @@ static const cook_item_t ITEMS[] = {
 
 static void _cook_display(cook_face_state_t *state) {
     const cook_item_t *item = &ITEMS[state->item_idx];
-    char bot[10];  /* snprintf sink — watch_display_text reads only 6 chars */
 
     /* Top row: food label */
     watch_display_text_with_fallback(WATCH_POSITION_TOP, item->top_custom, item->top_classic);
 
-    /* Bottom row alternates each second: oven temp / internal temp */
-    if (state->tick % 2 == 0) {
-        snprintf(bot, sizeof(bot), "ov %3u", item->oven_f);
+    /* Bottom row: right-aligned 3-digit temp, space, mode letter (H=oven, T=target) */
+    char bot[9];
+    if (state->show_heat) {
+        snprintf(bot, sizeof(bot), " %3u H", item->oven_f);
     } else {
         if (item->internal_f > 0) {
-            snprintf(bot, sizeof(bot), "in %3u", item->internal_f);
+            snprintf(bot, sizeof(bot), " %3u T", item->internal_f);
         } else {
-            snprintf(bot, sizeof(bot), "in n/A");
+            snprintf(bot, sizeof(bot), "  -- T");
         }
     }
     watch_display_text(WATCH_POSITION_BOTTOM, bot);
@@ -86,8 +86,7 @@ void cook_face_setup(uint8_t watch_face_index, void **context_ptr) {
 
 void cook_face_activate(void *context) {
     cook_face_state_t *state = (cook_face_state_t *)context;
-    state->tick = 0;
-    movement_request_tick_frequency(1);
+    state->show_heat = false; /* default: show target internal temp */
 }
 
 bool cook_face_loop(movement_event_t event, void *context) {
@@ -98,20 +97,18 @@ bool cook_face_loop(movement_event_t event, void *context) {
             _cook_display(state);
             break;
 
-        case EVENT_TICK:
-            state->tick++;
+        case EVENT_ALARM_BUTTON_UP:
+            state->item_idx = (state->item_idx + 1) % COOK_NUM_ITEMS;
             _cook_display(state);
             break;
 
-        case EVENT_ALARM_BUTTON_UP:
-            state->item_idx = (state->item_idx + 1) % COOK_NUM_ITEMS;
-            state->tick = 0;
+        case EVENT_LIGHT_BUTTON_UP:
+            state->show_heat = !state->show_heat;
             _cook_display(state);
             break;
 
         case EVENT_LIGHT_BUTTON_DOWN:
-            movement_illuminate_led();
-            break;
+            break; /* suppress LED; toggle happens on button up */
 
         case EVENT_TIMEOUT:
             movement_move_to_face(0);

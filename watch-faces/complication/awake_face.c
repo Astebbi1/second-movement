@@ -243,9 +243,9 @@ bool awake_face_loop(movement_event_t event, void *context) {
             break;
 
         case EVENT_ALARM_BUTTON_UP:
-            // Toggle between current-mode view and last sleep duration
-            if (state->last_sleep_seconds > 0)
-                state->show_sleep = !state->show_sleep;
+            // Toggle between current-mode view and last sleep duration.
+            // Always allow toggle — SLEPT view shows " none " if no sleep recorded yet.
+            state->show_sleep = !state->show_sleep;
             _awake_update_display(state);
             break;
 
