@@ -34,6 +34,7 @@ static const uint32_t RTC_CNT_HZ = 128;
 static const uint32_t RTC_CNT_SUBSECOND_MASK = RTC_CNT_HZ - 1;
 static const uint32_t RTC_CNT_DIV = 7;
 static const uint32_t RTC_CNT_TICKS_PER_MINUTE = RTC_CNT_HZ * 60;
+static const uint32_t RTC_COMP_GRACE_PERIOD = 4;
 
 static uint32_t counter_interval;
 static uint32_t counter;
@@ -220,7 +221,10 @@ static void _watch_process_comp_callbacks(void) {
     // In hardware the interrupt fires one tick after the matching counter
     if (counter == (scheduled_comp_counter + 1)) {
         for (uint8_t index = 0; index < WATCH_RTC_N_COMP_CB; ++index) {
-            if (comp_callbacks[index].enabled && scheduled_comp_counter == comp_callbacks[index].counter) {
+            // Fire any callback whose target is within GRACE_PERIOD*4 ticks of now,
+            // matching the hardware implementation that catches slightly past-due callbacks.
+            if (comp_callbacks[index].enabled &&
+                (counter - comp_callbacks[index].counter) < (RTC_COMP_GRACE_PERIOD * 4)) {
                 comp_callbacks[index].enabled = false;
                 comp_callbacks[index].callback();
             }
@@ -303,23 +307,19 @@ void watch_rtc_disable_comp_callback_no_schedule(uint8_t index) {
 
 void watch_rtc_schedule_next_comp(void) {
     rtc_counter_t curr_counter = watch_rtc_get_counter();
-    // If there is already a pending comp interrupt for this very tick, let it fire
-    // And this function will be called again as soon as the interrupt fires.
-    if (curr_counter == scheduled_comp_counter) {
-        return;
-    }
 
-    // The soonest we can schedule is the next tick
-    curr_counter +=1;
+    // Subtract grace period so that slightly past-due callbacks still have a positive diff
+    // and are therefore selected rather than wrapping around to a huge unsigned value.
+    // This matches the hardware implementation in watch-library/hardware/watch/watch_rtc.c.
+    rtc_counter_t lax_curr_counter = curr_counter - RTC_COMP_GRACE_PERIOD;
 
     bool schedule_any = false;
-    rtc_counter_t comp_counter;
+    rtc_counter_t comp_counter = 0;
     rtc_counter_t min_diff = UINT_MAX;
 
     for (uint8_t index = 0; index < WATCH_RTC_N_COMP_CB; ++index) {
-        // rtc_counter_t diff = 
         if (comp_callbacks[index].enabled) {
-            rtc_counter_t diff = comp_callbacks[index].counter - curr_counter;
+            rtc_counter_t diff = comp_callbacks[index].counter - lax_curr_counter;
             if (diff <= min_diff) {
                 min_diff = diff;
                 comp_counter = comp_callbacks[index].counter;
@@ -329,9 +329,17 @@ void watch_rtc_schedule_next_comp(void) {
     }
 
     if (schedule_any) {
-        scheduled_comp_counter = comp_counter;
+        // Only update if the target has changed (avoid redundant reschedules)
+        if (comp_counter != scheduled_comp_counter) {
+            // Don't schedule closer than GRACE_PERIOD ticks from now
+            rtc_counter_t earliest = curr_counter + RTC_COMP_GRACE_PERIOD;
+            if ((earliest - lax_curr_counter) > (comp_counter - lax_curr_counter)) {
+                comp_counter = earliest;
+            }
+            scheduled_comp_counter = comp_counter;
+        }
     } else {
-        scheduled_comp_counter = curr_counter - 2;
+        scheduled_comp_counter = lax_curr_counter - RTC_COMP_GRACE_PERIOD;
     }
 }
 

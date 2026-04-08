@@ -72,6 +72,7 @@ SRCS += \
   ./watch-faces/complication/step_counter_face.c \
   ./watch-faces/complication/awake_face.c \
   ./watch-faces/complication/nxtup_face.c \
+  ./watch-faces/complication/punch_face.c \
   ./lib/embedded_pedometer/count_steps.c \
   ./watch-faces/complication/chess_clock_face.c \
   ./watch-faces/complication/active_countdown_face.c \

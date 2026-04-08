@@ -85,7 +85,7 @@ static uint8_t _stebbs_dow(watch_date_time_t dt) {
     return (dt.unit.day + 13 * (m + 1) / 5 + y + y / 4 + 525 - 2) % 7;
 }
 
-// Parse __DATE__ ("Mmm  D YYYY" or "Mmm DD YYYY") into "DD-MM-YY" (8 chars + NUL).
+// Parse __DATE__ ("Mmm  D YYYY" or "Mmm DD YYYY") into "MM-DD-YY" (8 chars + NUL).
 // ':' is blank on the classic LCD, so '-' is used as separator instead.
 static void _stebbs_build_date_str(char out[9]) {
     static const char _mon_table[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
@@ -101,7 +101,7 @@ static void _stebbs_build_date_str(char out[9]) {
     uint8_t day  = ((d[4] == ' ') ? 0 : (uint8_t)(d[4] - '0')) * 10 + (uint8_t)(d[5] - '0');
     // d[9..10] = last two digits of 4-digit year
     uint8_t year = (uint8_t)(d[9] - '0') * 10 + (uint8_t)(d[10] - '0');
-    snprintf(out, 9, "%02d-%02d-%02d", day, month, year);
+    snprintf(out, 9, "%02d-%02d-%02d", month, day, year);
 }
 
 static void _update_scroll_text(stebbs_state_t *state) {
@@ -122,7 +122,7 @@ static void _stebbs_display(stebbs_state_t *state) {
         }
 
         if (state->build_date_ticks < BUILD_DATE_PHASE1) {
-            // Phase 1: build date "DDMMYY" (compile-time constant, no separators)
+            // Phase 1: build date "MMDDYY" (compile-time constant, no separators)
             char bd[9];
             _stebbs_build_date_str(bd);
             // bd is "DD-MM-YY"; extract only the 6 digit chars
@@ -130,11 +130,16 @@ static void _stebbs_display(stebbs_state_t *state) {
             display_buf[6] = bd[3]; display_buf[7] = bd[4];
             display_buf[8] = bd[6]; display_buf[9] = bd[7];
         } else {
-            // Phase 2: build time "HHMMSS" from __TIME__ ("HH:MM:SS", no separators)
+            // Phase 2: build time in 12h format "HMMSS" from __TIME__ ("HH:MM:SS")
             const char *t = __TIME__;
-            display_buf[4] = t[0]; display_buf[5] = t[1];
-            display_buf[6] = t[3]; display_buf[7] = t[4];
-            display_buf[8] = t[6]; display_buf[9] = t[7];
+            uint8_t h = (uint8_t)((t[0] - '0') * 10 + (t[1] - '0'));
+            if (h == 0) h = 12;
+            else if (h > 12) h -= 12;
+            char bt[7];
+            snprintf(bt, sizeof(bt), "%2u%c%c%c%c", h, t[3], t[4], t[6], t[7]);
+            display_buf[4] = bt[0]; display_buf[5] = bt[1];
+            display_buf[6] = bt[2]; display_buf[7] = bt[3];
+            display_buf[8] = bt[4]; display_buf[9] = bt[5];
         }
 
         display_buf[10] = '\0';

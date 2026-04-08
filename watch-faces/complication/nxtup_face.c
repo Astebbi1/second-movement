@@ -155,11 +155,23 @@ static void _nxtup_update_display(nxtup_state_t *state) {
     uint8_t  orig_idx = state->sorted_order[state->current_idx];
     uint16_t days     = state->days_until[orig_idx];
 
-    // Top: "NX" + 3-digit days remaining (custom 5-char top); "NX" fallback on classic
+    // Top: "NX" + 3-digit days remaining (custom 5-char top); "NU" fallback on classic.
+    // Classic: also use top-right 2 chars to show days when event is within 39 days
+    // (the date-digit segments only support 0-3 in the tens place, so 39 is the max).
     char top_buf[6];
     unsigned disp_days = days > 365 ? 365 : days;
     snprintf(top_buf, sizeof(top_buf), "NX%3u", disp_days);
     watch_display_text_with_fallback(WATCH_POSITION_TOP, top_buf, "NU");
+
+    if (watch_get_lcd_type() != WATCH_LCD_TYPE_CUSTOM) {
+        if (days <= 39) {
+            char tr[3];
+            snprintf(tr, sizeof(tr), "%2u", days);
+            watch_display_text(WATCH_POSITION_TOP_RIGHT, tr);
+        } else {
+            watch_display_text(WATCH_POSITION_TOP_RIGHT, "  ");
+        }
+    }
 
     // Bottom: 6-char window into the scroll string, wraps seamlessly via modulo
     uint8_t len = state->scroll_buf_len;
@@ -252,6 +264,10 @@ bool nxtup_face_loop(movement_event_t event, void *context) {
             break;
 
         case EVENT_LIGHT_LONG_PRESS:
+            movement_illuminate_led();
+            break;
+
+        case EVENT_ALARM_LONG_PRESS:
             // Jump back to nearest upcoming event
             state->current_idx = 0;
             _build_scroll_string(state);

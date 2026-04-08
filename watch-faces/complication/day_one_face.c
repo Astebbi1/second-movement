@@ -94,6 +94,18 @@ static uint32_t _day_one_face_years_since(day_one_state_t *state) {
     return (years > 0) ? (uint32_t)years : 0;
 }
 
+static uint32_t _day_one_face_weeks_since(day_one_state_t *state) {
+    watch_date_time_t date_time = watch_rtc_get_date_time();
+    uint32_t today_jdn = _day_one_face_juliandaynum(date_time.unit.year + WATCH_RTC_REFERENCE_YEAR, date_time.unit.month, date_time.unit.day);
+    uint32_t birth_jdn = _day_one_face_juliandaynum(state->birth_year, state->birth_month, state->birth_day);
+    if (today_jdn < birth_jdn) return 0;
+    // (jdn + 1) % 7 gives day-of-week: 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    // Snap each date back to the Sunday that started its calendar week.
+    uint32_t today_week_start = today_jdn - (today_jdn + 1) % 7;
+    uint32_t birth_week_start = birth_jdn - (birth_jdn + 1) % 7;
+    return (today_week_start - birth_week_start) / 7;
+}
+
 static uint32_t _day_one_face_months_left(day_one_state_t *state) {
     watch_date_time_t date_time = watch_rtc_get_date_time();
     uint16_t cur_year  = date_time.unit.year + WATCH_RTC_REFERENCE_YEAR;
@@ -303,7 +315,7 @@ bool day_one_face_loop(movement_event_t event, void *context) {
                 case DAY_ONE_PAGE_DISPLAY:
                     state->current_page = DAY_ONE_PAGE_WEEKS_SINCE;
                     // Classic pos1: 'S' renders as '8' (C=1,F=1 tie both sides on); use single char + space
-                    _day_one_face_show_count(_day_one_face_days_since(state) / 7, "WKSnC", "W ");
+                    _day_one_face_show_count(_day_one_face_weeks_since(state), "WKSnC", "W ");
                     watch_set_indicator(WATCH_INDICATOR_BELL);
                     watch_clear_indicator(WATCH_INDICATOR_LAP);
                     state->ticks = 30;

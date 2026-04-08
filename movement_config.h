@@ -56,6 +56,7 @@ const watch_face_t watch_faces[] = {
     settings_face,
     voltage_face,
     chess_clock_face,
+    punch_face,
     butterfly_game_face,
     endless_runner_face,
 };
@@ -88,6 +89,7 @@ const char *watch_face_names[] = {
     "Settings",
     "Battery",
     "Chess Clock",
+    "Punch",
     "Butterfly",
     "Runner",
 };

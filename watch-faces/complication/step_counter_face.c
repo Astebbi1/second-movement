@@ -74,7 +74,9 @@ static uint16_t display_step_count_now(bool sensor_seen, bool in_low_batt) {
 static void _step_counter_face_log_data(step_counter_state_t *logger_state, uint32_t step_count) {
     watch_date_time_t date_time = movement_get_local_date_time();
     size_t pos = logger_state->data_points % STEP_COUNTER_NUM_DATA_POINTS;
-    logger_state->data[pos].day = date_time.unit.day;
+    // Reset fires at 4am, so the day that just ended is yesterday — store day-1.
+    // Fall back to 31 if we're on the 1st (month boundary approximation).
+    logger_state->data[pos].day = (date_time.unit.day > 1) ? (date_time.unit.day - 1) : 31;
     logger_state->data[pos].step_count = step_count;
     logger_state->data_points++;
 }
@@ -239,6 +241,6 @@ movement_watch_face_advisory_t step_counter_face_advise(void *context) {
     (void) context;
     movement_watch_face_advisory_t retval = { 0 };
     watch_date_time_t date_time = movement_get_local_date_time();
-    retval.wants_background_task = (date_time.unit.hour == 23 && date_time.unit.minute == 59);
+    retval.wants_background_task = (date_time.unit.hour == 4 && date_time.unit.minute == 0);
     return retval;
 }
