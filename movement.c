@@ -119,6 +119,9 @@ movement_volatile_state_t movement_volatile_state;
 
 // The last sequence that we have been asked to play while the watch was in deep sleep
 static int8_t *_pending_sequence;
+// RTC counter captured when nightglow illuminates; phase is relative to this so the
+// animation always starts from -75° on each press regardless of absolute counter value.
+static rtc_counter_t _nightglow_start_counter = 0;
 
 // The note sequence of the default alarm
 int8_t alarm_tune[] = {
@@ -457,49 +460,42 @@ void movement_illuminate_led(void) {
     // Global persistent backlight is in charge; don't stack a timed LED on top
     if (movement_state.global_light_on) return;
     if (movement_state.settings.bit.led_duration != 0b111) {
-        if (movement_state.settings.bit.led_duration == 5) {
-            // Toggle mode: press turns on, press again turns off
+        uint8_t led_mode = movement_state.settings.bit.led_duration;
+        if (led_mode == 6) {
+            // Toggle mode: static user color, persistent (second press turns off)
             if (movement_state.light_on) {
                 movement_force_led_off();
-            } else {
-                movement_state.light_on = true;
-                watch_set_led_color_rgb(movement_state.settings.bit.led_red_color | movement_state.settings.bit.led_red_color << 4,
-                                        movement_state.settings.bit.led_green_color | movement_state.settings.bit.led_green_color << 4,
-                                        movement_state.settings.bit.led_blue_color | movement_state.settings.bit.led_blue_color << 4);
+                return;
             }
+            movement_state.light_on = true;
+            watch_set_led_color_rgb(movement_state.settings.bit.led_red_color | movement_state.settings.bit.led_red_color << 4,
+                                    movement_state.settings.bit.led_green_color | movement_state.settings.bit.led_green_color << 4,
+                                    movement_state.settings.bit.led_blue_color | movement_state.settings.bit.led_blue_color << 4);
             return;
         }
         movement_state.light_on = true;
-        if (movement_state.settings.bit.led_duration == 4) {
-            // Rainbow mode: smooth 4-second gradient via RTC compare callback
+        if (led_mode == 3 || led_mode == 4 || led_mode == 5) {
+            // Animated modes (rainbow, rainbow 2, nightglow): animated color with 4-second auto-off
             rtc_counter_t counter = watch_rtc_get_counter();
             uint32_t freq = watch_rtc_get_frequency();
-            // Schedule LED-off at +4 seconds
-            watch_rtc_register_comp_callback_no_schedule(
-                cb_led_timeout_interrupt,
-                counter + 4 * freq,
-                LED_TIMEOUT
-            );
-            // Schedule first color update immediately (fires ~next tick)
-            watch_rtc_register_comp_callback_no_schedule(
-                cb_rainbow_update,
-                counter + 1,
-                RAINBOW_UPDATE
-            );
+            uint32_t duration = 4; // all animated modes last 4 seconds
+            if (led_mode == 5) _nightglow_start_counter = counter;  // phase starts fresh each activation
+            watch_rtc_register_comp_callback_no_schedule(cb_led_timeout_interrupt, counter + duration * freq, LED_TIMEOUT);
+            watch_rtc_register_comp_callback_no_schedule(cb_rainbow_update, counter + 1, RAINBOW_UPDATE);
             movement_volatile_state.schedule_next_comp = true;
         } else {
             watch_set_led_color_rgb(movement_state.settings.bit.led_red_color | movement_state.settings.bit.led_red_color << 4,
                                     movement_state.settings.bit.led_green_color | movement_state.settings.bit.led_green_color << 4,
                                     movement_state.settings.bit.led_blue_color | movement_state.settings.bit.led_blue_color << 4);
-            if (movement_state.settings.bit.led_duration == 0) {
-                // Do nothing it'll be turned off on button release
+            if (led_mode == 0) {
+                // Do nothing; turned off on button release
             } else {
-                // Set a timeout to turn off the light
+                // Timed: mode 1 = 3s, mode 2 = 5s
                 rtc_counter_t counter = watch_rtc_get_counter();
                 uint32_t freq = watch_rtc_get_frequency();
                 watch_rtc_register_comp_callback_no_schedule(
                     cb_led_timeout_interrupt,
-                    counter + (movement_state.settings.bit.led_duration * 2 - 1) * freq,
+                    counter + (led_mode * 2 + 1) * freq,
                     LED_TIMEOUT
                 );
                 movement_volatile_state.schedule_next_comp = true;
@@ -561,7 +557,8 @@ bool movement_default_loop_handler(movement_event_t event) {
             if (movement_state.settings.bit.led_duration == 0) {
                 movement_force_led_off();
             }
-            // Toggle mode (5) stays on until next press — no action on release
+            // Timed/animated modes (1-5): auto-off handled by LED_TIMEOUT / cb_rainbow_update.
+            // Toggle (6): next LIGHT_BUTTON_DOWN handles the off.
             break;
         case EVENT_MODE_LONG_PRESS:
             if (MOVEMENT_SECONDARY_FACE_INDEX && movement_state.current_face_idx == 0) {
@@ -1760,36 +1757,94 @@ void cb_led_timeout_interrupt(void) {
     movement_volatile_state.turn_led_off = true;
 }
 
-// Smooth rainbow LED: called every 1/8 second via RTC compare callback.
-// Computes a full HSV rainbow over a 4-second cycle using the RTC counter
-// as the time source, so the gradient speed is independent of tick frequency.
+// Rainbow/nightglow LED: called every 1/8 second via RTC compare callback.
+// mode 3 = 4-second rainbow, mode 4 = 2-second rainbow, mode 5 = nightglow.
 void cb_rainbow_update(void) {
-    if (!movement_state.light_on || movement_state.settings.bit.led_duration != 4) return;
+    uint8_t mode = movement_state.settings.bit.led_duration;
+    if (!movement_state.light_on || mode < 3 || mode > 5) return;
 
     rtc_counter_t counter = watch_rtc_get_counter();
     uint32_t freq = watch_rtc_get_frequency();
 
-    // Phase 0..(4*freq-1) maps to one full 4-second rainbow cycle
-    uint32_t total  = 4 * freq;
-    uint32_t phase  = (uint32_t)(counter % total);
-    uint32_t seg    = total / 6;               // ticks per 60-degree HSV segment
-    if (seg < 1) seg = 1;
-    uint32_t seg_idx   = phase / seg;
-    uint32_t seg_phase = phase - seg_idx * seg; // position within segment
-
-    // Linearly interpolate 0-255 across segment
-    uint8_t up = (seg > 1) ? (uint8_t)((seg_phase * 255) / (seg - 1)) : 255;
-    uint8_t dn = 255 - up;
-
     uint8_t r, g, b;
-    switch (seg_idx % 6) {
-        case 0: r = 255; g = up;  b = 0;   break; // red → yellow
-        case 1: r = dn;  g = 255; b = 0;   break; // yellow → green
-        case 2: r = 0;   g = 255; b = up;  break; // green → cyan
-        case 3: r = 0;   g = dn;  b = 255; break; // cyan → blue
-        case 4: r = up;  g = 0;   b = 255; break; // blue → magenta
-        default: r = 255; g = 0;  b = dn;  break; // magenta → red
+
+    if (mode == 5) {
+        // Nightglow: per-hour hue table with minute interpolation + ±75° oscillation.
+        // Phase is tracked relative to activation (elapsed since _nightglow_start_counter)
+        // so the sweep always starts from -75° on each button press regardless of the
+        // absolute RTC counter value.  Self-timeout after 4 seconds avoids any dependency
+        // on the LED_TIMEOUT comp callback also landing correctly.
+        static const uint16_t hue_table[24] = {
+            0, 0, 0, 350, 320, 290, 260, 230,       // midnight–7am  (red → purple → blue)
+            215, 215, 220, 220, 220, 220, 220, 220, // 8am–3pm       (sky blue plateau)
+            240, 290, 330, 15, 5, 0, 0, 0,          // 4pm–11pm      (blue-violet → dusk → red)
+        };
+
+        uint32_t total   = 4 * freq;                            // 512 ticks = 4 s
+        uint32_t elapsed = (uint32_t)(counter - _nightglow_start_counter);
+
+        // Self-timeout: if we've been running for ≥ 4 s, turn off and stop
+        if (elapsed >= total) {
+            movement_force_led_off();
+            return;
+        }
+
+        watch_date_time_t dt = movement_get_local_date_time();
+        uint8_t hour   = dt.unit.hour;
+        uint8_t minute = dt.unit.minute;
+
+        // Shortest-arc interpolation between this hour's hue and next hour's hue
+        uint16_t h0    = hue_table[hour];
+        uint16_t h1    = hue_table[(hour + 1) % 24];
+        int16_t  delta = (int16_t)h1 - (int16_t)h0;
+        if (delta >  180) delta -= 360;
+        if (delta < -180) delta += 360;
+        uint16_t base_hue = (uint16_t)(((int32_t)h0 + delta * (int32_t)minute / 60 + 360) % 360);
+
+        // ±75° triangular oscillation keyed to elapsed time (not absolute counter)
+        uint32_t phase = elapsed;
+        int32_t  osc;
+        if (phase < total / 2)
+            osc = (int32_t)((phase * 50) / (total / 2)) - 25;
+        else
+            osc = (int32_t)(((total - phase) * 50) / (total / 2)) - 25;
+
+        uint16_t hue = (uint16_t)((base_hue + osc + 360) % 360);
+
+        // HSV → RGB (saturation=255, value=255)
+        uint16_t seg_idx = hue / 60;
+        uint8_t  f       = (uint8_t)((hue % 60) * 255 / 59);
+        uint8_t  q       = 255 - f;
+        switch (seg_idx % 6) {
+            case 0: r = 255; g = f;   b = 0;   break;
+            case 1: r = q;   g = 255; b = 0;   break;
+            case 2: r = 0;   g = 255; b = f;   break;
+            case 3: r = 0;   g = q;   b = 255; break;
+            case 4: r = f;   g = 0;   b = 255; break;
+            default: r = 255; g = 0;  b = q;   break;
+        }
+    } else {
+        // Rainbow: mode 3 = 4-second cycle, mode 4 = 2-second cycle
+        uint32_t total     = (mode == 3) ? 4 * freq : 2 * freq;
+        uint32_t phase     = (uint32_t)(counter % total);
+        uint32_t seg       = total / 6;
+        if (seg < 1) seg   = 1;
+        uint32_t seg_idx   = phase / seg;
+        uint32_t seg_phase = phase - seg_idx * seg;
+
+        uint8_t up = (seg > 1) ? (uint8_t)((seg_phase * 255) / (seg - 1)) : 255;
+        uint8_t dn = 255 - up;
+
+        switch (seg_idx % 6) {
+            case 0: r = 255; g = up;  b = 0;   break; // red → yellow
+            case 1: r = dn;  g = 255; b = 0;   break; // yellow → green
+            case 2: r = 0;   g = 255; b = up;  break; // green → cyan
+            case 3: r = 0;   g = dn;  b = 255; break; // cyan → blue
+            case 4: r = up;  g = 0;   b = 255; break; // blue → magenta
+            default: r = 255; g = 0;  b = dn;  break; // magenta → red
+        }
     }
+
     watch_set_led_color_rgb(r, g, b);
 
     // Reschedule for 1/8 second from now

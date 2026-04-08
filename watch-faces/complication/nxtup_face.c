@@ -104,8 +104,10 @@ static const char *_nxtup_month_names[] = {
     "JuL","AuG","SEP","OCt","noV","dEC"
 };
 
-// Builds "name DOW Mon day  " into state->scroll_buf.
-// The trailing 2 spaces act as the gap before the loop repeats.
+// Builds the scroll string into state->scroll_buf.
+// Custom LCD: "   name DOW Mon day  " — days shown in top-right, no need in scroll.
+// Classic LCD: "   name DOW Mon day -Xd  " — days appended since classic has no top-right.
+// Trailing 2 spaces act as the gap before the loop repeats.
 // Also resets scroll_pos to 0.
 static void _build_scroll_string(nxtup_state_t *state) {
     uint8_t orig_idx = state->sorted_order[state->current_idx];
@@ -119,12 +121,24 @@ static void _build_scroll_string(nxtup_state_t *state) {
     uint32_t event_jdn = today_jdn + days;
     uint8_t  dow = (uint8_t)((event_jdn + 1) % 7);
 
-    snprintf(state->scroll_buf, sizeof(state->scroll_buf),
-             "   %s %s %s %u  ",
-             ev->name,
-             _nxtup_dow_names[dow],
-             _nxtup_month_names[ev->month],
-             ev->day);
+    if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
+        snprintf(state->scroll_buf, sizeof(state->scroll_buf),
+                 "   %s %s %s %u  ",
+                 ev->name,
+                 _nxtup_dow_names[dow],
+                 _nxtup_month_names[ev->month],
+                 ev->day);
+    } else {
+        // Classic LCD: append " -Xd" so the days count scrolls past with the event.
+        unsigned disp_days = days > 365 ? 365 : days;
+        snprintf(state->scroll_buf, sizeof(state->scroll_buf),
+                 "   %s %s %s %u -%ud  ",
+                 ev->name,
+                 _nxtup_dow_names[dow],
+                 _nxtup_month_names[ev->month],
+                 ev->day,
+                 disp_days);
+    }
     state->scroll_buf_len = (uint8_t)strlen(state->scroll_buf);
     state->scroll_pos = 0;
 }
@@ -133,7 +147,7 @@ static void _build_scroll_string(nxtup_state_t *state) {
 
 static void _nxtup_update_display(nxtup_state_t *state) {
     if (state->event_count == 0) {
-        watch_display_text_with_fallback(WATCH_POSITION_TOP, "NX---", "NX");
+        watch_display_text_with_fallback(WATCH_POSITION_TOP, "NX---", "NU");
         watch_display_text(WATCH_POSITION_BOTTOM, "nO EVt");
         return;
     }
@@ -141,11 +155,23 @@ static void _nxtup_update_display(nxtup_state_t *state) {
     uint8_t  orig_idx = state->sorted_order[state->current_idx];
     uint16_t days     = state->days_until[orig_idx];
 
-    // Top: "NX" + 3-digit days remaining (custom 5-char top); "NX" fallback on classic
+    // Top: "NX" + 3-digit days remaining (custom 5-char top); "NU" fallback on classic.
+    // Classic: also use top-right 2 chars to show days when event is within 39 days
+    // (the date-digit segments only support 0-3 in the tens place, so 39 is the max).
     char top_buf[6];
     unsigned disp_days = days > 365 ? 365 : days;
     snprintf(top_buf, sizeof(top_buf), "NX%3u", disp_days);
-    watch_display_text_with_fallback(WATCH_POSITION_TOP, top_buf, "NX");
+    watch_display_text_with_fallback(WATCH_POSITION_TOP, top_buf, "NU");
+
+    if (watch_get_lcd_type() != WATCH_LCD_TYPE_CUSTOM) {
+        if (days <= 39) {
+            char tr[3];
+            snprintf(tr, sizeof(tr), "%2u", days);
+            watch_display_text(WATCH_POSITION_TOP_RIGHT, tr);
+        } else {
+            watch_display_text(WATCH_POSITION_TOP_RIGHT, "  ");
+        }
+    }
 
     // Bottom: 6-char window into the scroll string, wraps seamlessly via modulo
     uint8_t len = state->scroll_buf_len;
@@ -175,7 +201,9 @@ void nxtup_face_activate(void *context) {
     _build_sorted_list(state);
     state->current_idx = 0;
     _build_scroll_string(state);
-    movement_request_tick_frequency(4); // 4 Hz — matches stebbs_face scroll speed
+    // Classic LCD: 8 Hz ticks, advance scroll every 3rd tick = 375 ms/char.
+    // Custom LCD: 4 Hz ticks, advance every tick = 250 ms/char.
+    movement_request_tick_frequency((watch_get_lcd_type() == WATCH_LCD_TYPE_CLASSIC) ? 8 : 4);
 }
 
 bool nxtup_face_loop(movement_event_t event, void *context) {
@@ -188,6 +216,13 @@ bool nxtup_face_loop(movement_event_t event, void *context) {
 
         case EVENT_TICK:
             if (state->event_count == 0) break;
+
+            // Classic LCD runs at 8 Hz; only advance scroll every 3rd tick (375 ms/char).
+            // Custom LCD runs at 4 Hz and advances every tick (250 ms/char).
+            if (watch_get_lcd_type() == WATCH_LCD_TYPE_CLASSIC) {
+                state->scroll_tick = (state->scroll_tick + 1) % 3;
+                if (state->scroll_tick != 0) break;
+            }
 
             // Advance scroll one position per tick
             state->scroll_pos = (state->scroll_pos + 1) % state->scroll_buf_len;
@@ -229,6 +264,10 @@ bool nxtup_face_loop(movement_event_t event, void *context) {
             break;
 
         case EVENT_LIGHT_LONG_PRESS:
+            movement_illuminate_led();
+            break;
+
+        case EVENT_ALARM_LONG_PRESS:
             // Jump back to nearest upcoming event
             state->current_idx = 0;
             _build_scroll_string(state);

@@ -50,11 +50,18 @@
 #include "movement.h"
 
 typedef enum {
-    DAY_ONE_PAGE_DISPLAY,
-    DAY_ONE_PAGE_YEAR,
-    DAY_ONE_PAGE_MONTH,
-    DAY_ONE_PAGE_DAY,
-    DAY_ONE_PAGE_DATE
+    DAY_ONE_PAGE_DISPLAY,       // days since (main)
+    DAY_ONE_PAGE_YEAR,          // settings: year
+    DAY_ONE_PAGE_MONTH,         // settings: month
+    DAY_ONE_PAGE_DAY,           // settings: day
+    DAY_ONE_PAGE_DATE,          // show set date
+    DAY_ONE_PAGE_DAYS_LEFT,     // days until birth_year+83
+    DAY_ONE_PAGE_WEEKS_LEFT,    // weeks until birth_year+83
+    DAY_ONE_PAGE_WEEKS_SINCE,   // weeks since birth
+    DAY_ONE_PAGE_MONTHS_SINCE,  // months since birth
+    DAY_ONE_PAGE_YEARS_SINCE,   // years since birth
+    DAY_ONE_PAGE_YEARS_LEFT,    // years until birth_year+83
+    DAY_ONE_PAGE_MONTHS_LEFT,   // months until birth_year+83
 } day_one_page_t;
 
 typedef struct {

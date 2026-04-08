@@ -33,35 +33,97 @@ static uint32_t _day_one_face_juliandaynum(uint16_t year, uint16_t month, uint16
     return (1461 * (year + 4800 + (month - 14) / 12)) / 4 + (367 * (month - 2 - 12 * ((month - 14) / 12))) / 12 - (3 * ((year + 4900 + (month - 14) / 12) / 100))/4 + day - 32075;
 }
 
-static void _day_one_face_update(day_one_state_t *state) {
-    watch_date_time_t date_time = watch_rtc_get_date_time();
-    uint32_t julian_date = _day_one_face_juliandaynum(date_time.unit.year + WATCH_RTC_REFERENCE_YEAR, date_time.unit.month, date_time.unit.day);
-    uint32_t julian_birthdate = _day_one_face_juliandaynum(state->birth_year, state->birth_month, state->birth_day);
-    uint32_t days = (julian_date < julian_birthdate) ? (julian_birthdate - julian_date) : (julian_date - julian_birthdate);
-
-    // "DAYno" fills the 5-char top on custom LCD; classic falls back to "DA"
-    watch_display_text_with_fallback(WATCH_POSITION_TOP, "DAYno", "DA");
-
+static void _day_one_face_show_count(uint32_t count, const char *top_custom, const char *top_classic) {
+    watch_display_text_with_fallback(WATCH_POSITION_TOP, top_custom, top_classic);
+    /* On classic LCD, WATCH_POSITION_TOP only writes positions 0,1.
+     * Explicitly clear positions 2,3 (TOP_RIGHT) so stale content from
+     * the DATE page (which writes the birth year there) doesn't persist. */
+    if (watch_get_lcd_type() != WATCH_LCD_TYPE_CUSTOM)
+        watch_display_text(WATCH_POSITION_TOP_RIGHT, "  ");
     if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
-        // Custom LCD: far-left "1" pixel + 4 digits in hours+minutes (positions 4-7), seconds blank.
-        // Handles 0-19999 days (~54 years). For 13287: pixel-1 + "3287".
         char num_buf[5];
-        if (days >= 10000) {
+        if (count >= 10000) {
             watch_set_pixel(0, 22);
-            snprintf(num_buf, sizeof(num_buf), "%4u", (unsigned)(days % 10000));
+            snprintf(num_buf, sizeof(num_buf), "%4u", (unsigned)(count % 10000));
         } else {
             watch_clear_pixel(0, 22);
-            snprintf(num_buf, sizeof(num_buf), "%4u", (unsigned)days);
+            snprintf(num_buf, sizeof(num_buf), "%4u", (unsigned)count);
         }
         watch_display_text(WATCH_POSITION_HOURS,   num_buf);
         watch_display_text(WATCH_POSITION_MINUTES, num_buf + 2);
         watch_display_text(WATCH_POSITION_SECONDS, "  ");
     } else {
-        // Classic LCD: 6-digit count in the full bottom row (positions 4-9)
         char num_buf[7];
-        snprintf(num_buf, sizeof(num_buf), "%6u", (unsigned)days);
+        snprintf(num_buf, sizeof(num_buf), "%6u", (unsigned)count);
         watch_display_text(WATCH_POSITION_BOTTOM, num_buf);
     }
+}
+
+static uint32_t _day_one_face_days_left(day_one_state_t *state) {
+    watch_date_time_t date_time = watch_rtc_get_date_time();
+    uint32_t today_jdn = _day_one_face_juliandaynum(date_time.unit.year + WATCH_RTC_REFERENCE_YEAR, date_time.unit.month, date_time.unit.day);
+    uint32_t end_jdn   = _day_one_face_juliandaynum(state->birth_year + 83, state->birth_month, state->birth_day);
+    return (end_jdn > today_jdn) ? (end_jdn - today_jdn) : 0;
+}
+
+static uint32_t _day_one_face_days_since(day_one_state_t *state) {
+    watch_date_time_t date_time = watch_rtc_get_date_time();
+    uint32_t today_jdn = _day_one_face_juliandaynum(date_time.unit.year + WATCH_RTC_REFERENCE_YEAR, date_time.unit.month, date_time.unit.day);
+    uint32_t birth_jdn = _day_one_face_juliandaynum(state->birth_year, state->birth_month, state->birth_day);
+    return (today_jdn >= birth_jdn) ? (today_jdn - birth_jdn) : 0;
+}
+
+static uint32_t _day_one_face_months_since(day_one_state_t *state) {
+    watch_date_time_t date_time = watch_rtc_get_date_time();
+    uint16_t cur_year  = date_time.unit.year + WATCH_RTC_REFERENCE_YEAR;
+    uint8_t  cur_month = date_time.unit.month;
+    uint8_t  cur_day   = date_time.unit.day;
+    int32_t months = (int32_t)(cur_year * 12 + cur_month) - (int32_t)(state->birth_year * 12 + state->birth_month);
+    if (cur_day < state->birth_day) months--;
+    return (months > 0) ? (uint32_t)months : 0;
+}
+
+static uint32_t _day_one_face_years_since(day_one_state_t *state) {
+    watch_date_time_t date_time = watch_rtc_get_date_time();
+    uint16_t cur_year  = date_time.unit.year + WATCH_RTC_REFERENCE_YEAR;
+    uint8_t  cur_month = date_time.unit.month;
+    uint8_t  cur_day   = date_time.unit.day;
+    int32_t years = (int32_t)cur_year - (int32_t)state->birth_year;
+    if (cur_month < state->birth_month || (cur_month == state->birth_month && cur_day < state->birth_day))
+        years--;
+    return (years > 0) ? (uint32_t)years : 0;
+}
+
+static uint32_t _day_one_face_weeks_since(day_one_state_t *state) {
+    watch_date_time_t date_time = watch_rtc_get_date_time();
+    uint32_t today_jdn = _day_one_face_juliandaynum(date_time.unit.year + WATCH_RTC_REFERENCE_YEAR, date_time.unit.month, date_time.unit.day);
+    uint32_t birth_jdn = _day_one_face_juliandaynum(state->birth_year, state->birth_month, state->birth_day);
+    if (today_jdn < birth_jdn) return 0;
+    // (jdn + 1) % 7 gives day-of-week: 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    // Snap each date back to the Sunday that started its calendar week.
+    uint32_t today_week_start = today_jdn - (today_jdn + 1) % 7;
+    uint32_t birth_week_start = birth_jdn - (birth_jdn + 1) % 7;
+    return (today_week_start - birth_week_start) / 7;
+}
+
+static uint32_t _day_one_face_months_left(day_one_state_t *state) {
+    watch_date_time_t date_time = watch_rtc_get_date_time();
+    uint16_t cur_year  = date_time.unit.year + WATCH_RTC_REFERENCE_YEAR;
+    uint8_t  cur_month = date_time.unit.month;
+    uint8_t  cur_day   = date_time.unit.day;
+    uint16_t end_year  = state->birth_year + 83;
+    int32_t months = (int32_t)(end_year * 12 + state->birth_month) - (int32_t)(cur_year * 12 + cur_month);
+    if (cur_day > state->birth_day) months--;
+    return (months > 0) ? (uint32_t)months : 0;
+}
+
+static void _day_one_face_update(day_one_state_t *state) {
+    watch_date_time_t date_time = watch_rtc_get_date_time();
+    uint32_t julian_date = _day_one_face_juliandaynum(date_time.unit.year + WATCH_RTC_REFERENCE_YEAR, date_time.unit.month, date_time.unit.day);
+    uint32_t julian_birthdate = _day_one_face_juliandaynum(state->birth_year, state->birth_month, state->birth_day);
+    uint32_t days = (julian_date < julian_birthdate) ? (julian_birthdate - julian_date) : (julian_date - julian_birthdate);
+    // "DAYno" fills the 5-char top on custom LCD; classic shows "D " (single char — pos1 avoids S/E/O ambiguity)
+    _day_one_face_show_count(days, "DAYno", "D ");
 }
 
 static void _day_one_face_abort_quick_cycle(day_one_state_t *state) {
@@ -121,6 +183,10 @@ void day_one_face_activate(void *context) {
     state->birth_year = movement_birthdate.bit.year;
     state->birth_month = movement_birthdate.bit.month;
     state->birth_day = movement_birthdate.bit.day;
+
+    // DISPLAY is the "since" group — show chime, hide lap
+    watch_set_indicator(WATCH_INDICATOR_BELL);
+    watch_clear_indicator(WATCH_INDICATOR_LAP);
 }
 
 bool day_one_face_loop(movement_event_t event, void *context) {
@@ -172,11 +238,20 @@ bool day_one_face_loop(movement_event_t event, void *context) {
                     _day_one_face_update(state);
                     break;
                 case DAY_ONE_PAGE_DATE:
+                case DAY_ONE_PAGE_DAYS_LEFT:
+                case DAY_ONE_PAGE_WEEKS_LEFT:
+                case DAY_ONE_PAGE_WEEKS_SINCE:
+                case DAY_ONE_PAGE_MONTHS_SINCE:
+                case DAY_ONE_PAGE_YEARS_SINCE:
+                case DAY_ONE_PAGE_YEARS_LEFT:
+                case DAY_ONE_PAGE_MONTHS_LEFT:
                     if (state->ticks > 0) {
                         state->ticks--;
                     } else {
                         state->current_page = DAY_ONE_PAGE_DISPLAY;
                         _day_one_face_update(state);
+                        watch_set_indicator(WATCH_INDICATOR_BELL);
+                        watch_clear_indicator(WATCH_INDICATOR_LAP);
                     }
                     break;
                 default:
@@ -184,11 +259,17 @@ bool day_one_face_loop(movement_event_t event, void *context) {
             }
             break;
         case EVENT_LIGHT_BUTTON_DOWN:
-            // only illuminate if we're in display mode
+            // only illuminate if we're in display mode (not settings)
             switch (state->current_page) {
                 case DAY_ONE_PAGE_DISPLAY:
-                    // fall through
                 case DAY_ONE_PAGE_DATE:
+                case DAY_ONE_PAGE_DAYS_LEFT:
+                case DAY_ONE_PAGE_WEEKS_LEFT:
+                case DAY_ONE_PAGE_WEEKS_SINCE:
+                case DAY_ONE_PAGE_MONTHS_SINCE:
+                case DAY_ONE_PAGE_YEARS_SINCE:
+                case DAY_ONE_PAGE_YEARS_LEFT:
+                case DAY_ONE_PAGE_MONTHS_LEFT:
                     movement_illuminate_led();
                     break;
                 default:
@@ -210,6 +291,8 @@ bool day_one_face_loop(movement_event_t event, void *context) {
                         movement_request_tick_frequency(1);
                         // force display since it normally won't update til midnight.
                         _day_one_face_update(state);
+                        watch_set_indicator(WATCH_INDICATOR_BELL);
+                        watch_clear_indicator(WATCH_INDICATOR_LAP);
                     }
                     break;
                 default:
@@ -217,7 +300,7 @@ bool day_one_face_loop(movement_event_t event, void *context) {
             }
             break;
         case EVENT_ALARM_BUTTON_UP:
-            // if we are on a settings page, increment whatever value we're setting.
+            // settings pages: increment the value being set
             switch (state->current_page) {
                 case DAY_ONE_PAGE_YEAR:
                     // fall through
@@ -227,14 +310,67 @@ bool day_one_face_loop(movement_event_t event, void *context) {
                     _day_one_face_abort_quick_cycle(state);
                     _day_one_face_increment(state);
                     break;
+                // ── display cycle ───────────────────────────────────────────
+                // Since group (chime on, lap off)
                 case DAY_ONE_PAGE_DISPLAY:
+                    state->current_page = DAY_ONE_PAGE_WEEKS_SINCE;
+                    // Classic pos1: 'S' renders as '8' (C=1,F=1 tie both sides on); use single char + space
+                    _day_one_face_show_count(_day_one_face_weeks_since(state), "WKSnC", "W ");
+                    watch_set_indicator(WATCH_INDICATOR_BELL);
+                    watch_clear_indicator(WATCH_INDICATOR_LAP);
+                    state->ticks = 30;
+                    break;
+                case DAY_ONE_PAGE_WEEKS_SINCE:
+                    state->current_page = DAY_ONE_PAGE_MONTHS_SINCE;
+                    _day_one_face_show_count(_day_one_face_months_since(state), "MOSnC", "M ");
+                    state->ticks = 30;
+                    break;
+                case DAY_ONE_PAGE_MONTHS_SINCE:
+                    state->current_page = DAY_ONE_PAGE_YEARS_SINCE;
+                    _day_one_face_show_count(_day_one_face_years_since(state), "YRSnC", "Y ");
+                    state->ticks = 30;
+                    break;
+                // Until group (lap on, chime off)
+                case DAY_ONE_PAGE_YEARS_SINCE:
+                    state->current_page = DAY_ONE_PAGE_YEARS_LEFT;
+                    _day_one_face_show_count(_day_one_face_days_left(state) / 365, "YRLFt", "YL");
+                    watch_clear_indicator(WATCH_INDICATOR_BELL);
+                    watch_set_indicator(WATCH_INDICATOR_LAP);
+                    state->ticks = 30;
+                    break;
+                case DAY_ONE_PAGE_YEARS_LEFT:
+                    state->current_page = DAY_ONE_PAGE_MONTHS_LEFT;
+                    _day_one_face_show_count(_day_one_face_months_left(state), "MOLFt", "ML");
+                    state->ticks = 30;
+                    break;
+                case DAY_ONE_PAGE_MONTHS_LEFT:
+                    state->current_page = DAY_ONE_PAGE_WEEKS_LEFT;
+                    _day_one_face_show_count(_day_one_face_days_left(state) / 7, "UKLFt", "WL");
+                    state->ticks = 30;
+                    break;
+                case DAY_ONE_PAGE_WEEKS_LEFT:
+                    state->current_page = DAY_ONE_PAGE_DAYS_LEFT;
+                    _day_one_face_show_count(_day_one_face_days_left(state), "DYLFt", "DL");
+                    state->ticks = 30;
+                    break;
+                // Set date (no indicators)
+                case DAY_ONE_PAGE_DAYS_LEFT:
                     state->current_page = DAY_ONE_PAGE_DATE;
+                    watch_clear_indicator(WATCH_INDICATOR_BELL);
+                    watch_clear_indicator(WATCH_INDICATOR_LAP);
+                    watch_display_text_with_fallback(WATCH_POSITION_TOP_LEFT, "SET", "SE");
                     sprintf(buf, "%04d%02d%02d", state->birth_year % 10000, state->birth_month % 100, state->birth_day % 100);
                     watch_display_text(WATCH_POSITION_TOP_RIGHT, buf);
                     watch_display_text(WATCH_POSITION_HOURS,     buf + 2);
                     watch_display_text(WATCH_POSITION_MINUTES,   buf + 4);
                     watch_display_text(WATCH_POSITION_SECONDS,   buf + 6);
-                    state->ticks = 2;
+                    state->ticks = 30;
+                    break;
+                case DAY_ONE_PAGE_DATE:
+                    state->current_page = DAY_ONE_PAGE_DISPLAY;
+                    _day_one_face_update(state);
+                    watch_set_indicator(WATCH_INDICATOR_BELL);
+                    watch_clear_indicator(WATCH_INDICATOR_LAP);
                     break;
                 default:
                     break;
@@ -246,6 +382,8 @@ bool day_one_face_loop(movement_event_t event, void *context) {
                 case DAY_ONE_PAGE_DISPLAY:
                     state->current_page++;
                     movement_request_tick_frequency(4);
+                    watch_clear_indicator(WATCH_INDICATOR_BELL);
+                    watch_clear_indicator(WATCH_INDICATOR_LAP);
                     break;
                 case DAY_ONE_PAGE_YEAR:
                     // fall through
