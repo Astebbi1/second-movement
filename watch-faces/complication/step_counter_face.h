@@ -39,7 +39,7 @@
  *
  * Step counting uses the LIS2DW accelerometer FIFO at 12.5 Hz, processed
  * through the Espruino step detection algorithm (lib/embedded_pedometer/).
- * The face skips itself gracefully if no accelerometer is detected.
+ * Shows 0 steps if no accelerometer is detected (e.g. simulator), so face indices stay in order.
  *
  * Up to STEP_COUNTER_NUM_DATA_POINTS (36) days of history are stored.
  */

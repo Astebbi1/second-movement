@@ -166,12 +166,10 @@ bool step_counter_face_loop(movement_event_t event, void *context) {
         case EVENT_ACTIVATE:
             logger_state->display_index = logger_state->data_points;
             logger_state->sec_inactivity = 1;
-            // If no accelerometer is present (emulator), show a static message and leave
-            // all global step-count state untouched so other faces aren't affected.
+            // If no accelerometer is present (emulator), show 0 steps normally so the
+            // face stays visible and face indices stay in order.
             if (!movement_has_lis2dw() && !movement_has_lis2dux()) {
-                logger_state->sensor_seen = false;
-                watch_display_text_with_fallback(WATCH_POSITION_TOP, "STEP ", "SC");
-                watch_display_text(WATCH_POSITION_BOTTOM, "NO SNS");
+                _step_counter_face_logging_update_display(logger_state);
                 break;
             }
             logger_state->in_low_batt = movement_step_counter_in_low_battery();
