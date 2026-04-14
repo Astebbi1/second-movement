@@ -123,6 +123,12 @@ static int8_t *_pending_sequence;
 // animation always starts from -75° on each press regardless of absolute counter value.
 static rtc_counter_t _nightglow_start_counter = 0;
 
+// LED fade state: color at fade start, step counter (8→1), and fading flag
+static uint8_t _fade_r, _fade_g, _fade_b, _fade_step;
+static bool    _led_fading;
+// Last color set by animated modes; captured so the fade starts from the right color
+static uint8_t _last_anim_r, _last_anim_g, _last_anim_b;
+
 // The note sequence of the default alarm
 int8_t alarm_tune[] = {
     BUZZER_NOTE_C8, 3,
@@ -151,6 +157,7 @@ void cb_light_btn_timeout_interrupt(void);
 void cb_alarm_btn_timeout_interrupt(void);
 void cb_led_timeout_interrupt(void);
 void cb_rainbow_update(void);
+void cb_led_fade_step(void);
 void cb_resign_timeout_interrupt(void);
 void cb_sleep_timeout_interrupt(void);
 void cb_buzzer_start(void);
@@ -513,11 +520,24 @@ void movement_force_led_on(uint8_t red, uint8_t green, uint8_t blue) {
     movement_volatile_state.schedule_next_comp = true;
 }
 
+// Start a 1-second 8-step fade from (r,g,b) → off, reusing the RAINBOW_UPDATE comp slot.
+static void _movement_begin_fade(uint8_t r, uint8_t g, uint8_t b) {
+    _fade_r = r; _fade_g = g; _fade_b = b;
+    _fade_step = 8;
+    _led_fading = true;
+    watch_rtc_disable_comp_callback_no_schedule(RAINBOW_UPDATE);
+    rtc_counter_t counter = watch_rtc_get_counter();
+    uint32_t freq = watch_rtc_get_frequency();
+    watch_rtc_register_comp_callback_no_schedule(cb_led_fade_step, counter + freq / 8, RAINBOW_UPDATE);
+    movement_volatile_state.schedule_next_comp = true;
+}
+
 void movement_force_led_off(void) {
     // Global persistent backlight overrides; only movement_toggle_global_light can turn it off
     if (movement_state.global_light_on) return;
     movement_state.light_on = false;
-    // Disable both the LED-off timer and the rainbow color-update callback
+    _led_fading = false;
+    // Disable both the LED-off timer and the rainbow/fade color-update callback
     watch_rtc_disable_comp_callback_no_schedule(LED_TIMEOUT);
     watch_rtc_disable_comp_callback_no_schedule(RAINBOW_UPDATE);
     movement_volatile_state.schedule_next_comp = true;
@@ -1754,7 +1774,19 @@ void cb_alarm_btn_timeout_interrupt(void) {
 }
 
 void cb_led_timeout_interrupt(void) {
-    movement_volatile_state.turn_led_off = true;
+    if (_led_fading) return;
+    uint8_t mode = movement_state.settings.bit.led_duration;
+    uint8_t r, g, b;
+    if (mode >= 3 && mode <= 5) {
+        // Animated mode: fade from the last color drawn by cb_rainbow_update
+        r = _last_anim_r; g = _last_anim_g; b = _last_anim_b;
+    } else {
+        // Timed static mode: fade from configured color
+        r = movement_state.settings.bit.led_red_color   | movement_state.settings.bit.led_red_color   << 4;
+        g = movement_state.settings.bit.led_green_color | movement_state.settings.bit.led_green_color << 4;
+        b = movement_state.settings.bit.led_blue_color  | movement_state.settings.bit.led_blue_color  << 4;
+    }
+    _movement_begin_fade(r, g, b);
 }
 
 // Rainbow/nightglow LED: called every 1/8 second via RTC compare callback.
@@ -1775,17 +1807,17 @@ void cb_rainbow_update(void) {
         // absolute RTC counter value.  Self-timeout after 4 seconds avoids any dependency
         // on the LED_TIMEOUT comp callback also landing correctly.
         static const uint16_t hue_table[24] = {
-            0, 0, 0, 350, 320, 290, 260, 230,       // midnight–7am  (red → purple → blue)
+            0, 0, 0, 0, 5, 20, 260, 230,            // midnight–7am  (red/orange → blue dawn)
             215, 215, 220, 220, 220, 220, 220, 220, // 8am–3pm       (sky blue plateau)
-            240, 290, 330, 15, 5, 0, 0, 0,          // 4pm–11pm      (blue-violet → dusk → red)
+            240, 30, 15, 15, 5, 0, 0, 0,            // 4pm–11pm      (blue → sunset orange → red)
         };
 
         uint32_t total   = 4 * freq;                            // 512 ticks = 4 s
         uint32_t elapsed = (uint32_t)(counter - _nightglow_start_counter);
 
-        // Self-timeout: if we've been running for ≥ 4 s, turn off and stop
+        // Self-timeout: if we've been running for ≥ 4 s, fade out and stop
         if (elapsed >= total) {
-            movement_force_led_off();
+            if (!_led_fading) _movement_begin_fade(_last_anim_r, _last_anim_g, _last_anim_b);
             return;
         }
 
@@ -1809,6 +1841,9 @@ void cb_rainbow_update(void) {
         else
             osc = (int32_t)(((total - phase) * 50) / (total / 2)) - 25;
 
+        // For warm/night base hues (≤30°), reflect negative oscillation so it swings
+        // toward orange rather than wrapping into the pink/fuchsia range (330–359°).
+        if (base_hue <= 30 && osc < 0) osc = -osc;
         uint16_t hue = (uint16_t)((base_hue + osc + 360) % 360);
 
         // HSV → RGB (saturation=255, value=255)
@@ -1845,6 +1880,7 @@ void cb_rainbow_update(void) {
         }
     }
 
+    _last_anim_r = r; _last_anim_g = g; _last_anim_b = b;
     watch_set_led_color_rgb(r, g, b);
 
     // Reschedule for 1/8 second from now
@@ -1855,6 +1891,29 @@ void cb_rainbow_update(void) {
         counter + interval,
         RAINBOW_UPDATE
     );
+    movement_volatile_state.schedule_next_comp = true;
+}
+
+// Fade step: called 8× over 1 second (every freq/8 ticks) via RAINBOW_UPDATE slot.
+// Steps from 7/8 → 1/8 brightness then calls movement_force_led_off().
+void cb_led_fade_step(void) {
+    if (!movement_state.light_on || !_led_fading) {
+        movement_force_led_off();
+        return;
+    }
+    _fade_step--;
+    if (_fade_step == 0) {
+        movement_force_led_off();
+        return;
+    }
+    watch_set_led_color_rgb(
+        (uint8_t)((uint16_t)_fade_r * _fade_step / 8),
+        (uint8_t)((uint16_t)_fade_g * _fade_step / 8),
+        (uint8_t)((uint16_t)_fade_b * _fade_step / 8)
+    );
+    rtc_counter_t counter = watch_rtc_get_counter();
+    uint32_t freq = watch_rtc_get_frequency();
+    watch_rtc_register_comp_callback_no_schedule(cb_led_fade_step, counter + freq / 8, RAINBOW_UPDATE);
     movement_volatile_state.schedule_next_comp = true;
 }
 

@@ -104,7 +104,7 @@ static void _update_display(bubble_level_state_t *state) {
         uint8_t pos = _to_6pos(reading);
         bot[pos] = (is_level && flash) ? '8' : '0';
         const char *top_1d = (state->mode == BUBBLE_MODE_Y) ? "LvL Y" : "LvL X";
-        const char *top_fb = (state->mode == BUBBLE_MODE_Y) ? "LvY"   : "LvX";
+        const char *top_fb = (state->mode == BUBBLE_MODE_Y) ? "ll"    : "--";
         watch_display_text_with_fallback(WATCH_POSITION_TOP, top_1d, top_fb);
         x_level = y_level = is_level;  /* reuse combined check below */
     }

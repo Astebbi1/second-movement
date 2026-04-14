@@ -53,11 +53,12 @@
 
 // Score 1000 maps to this raw impact magnitude² delta.
 // Tune up to make scoring harder, down to make it easier.
-#define PUNCH_SCALE_FACTOR    37748736ULL
+// At FS=±2g LP mode: 1g ≈ 2048 LSB. A 6g punch on a single axis ≈ 150,994,944.
+#define PUNCH_SCALE_FACTOR    150994944ULL
 
 // State timing (tick counts per state)
 #define PUNCH_COUNTDOWN_TICKS 5   // at 1 Hz  = 5 full seconds (5 / 4 / 3 / 2 / 1)
-#define PUNCH_MEASURE_TICKS   48  // at 16 Hz = 3 second punch window
+#define PUNCH_MEASURE_TICKS   24  // at 16 Hz = 1.5 second punch window (one-shot exits early)
 #define PUNCH_ANIM_TICKS      16  // at 8 Hz  = 2 second animation
 
 typedef enum {
@@ -72,13 +73,15 @@ typedef struct {
     punch_mode_t mode;
     uint8_t  tick_count;
     uint16_t score;
-    uint16_t history[PUNCH_HISTORY_SIZE];
+    uint16_t history[PUNCH_HISTORY_SIZE];  // sorted descending (best first)
     uint8_t  history_count;
-    uint8_t  view_idx;        // 0 = most recent score, 1..N = older
+    uint8_t  view_idx;        // 0 = current round, 1..N = rank in history
     int64_t  baseline_mag2;
     int64_t  peak_mag2;
+    bool     impact_detected;  // true once a significant spike is seen
+    uint8_t  post_peak_ticks;  // ticks of decay after impact; triggers early exit at 4
     bool     no_sensor;
-    uint16_t rng;             // LFSR state for animation noise
+    uint16_t rng;              // LFSR state for animation noise
 } punch_state_t;
 
 void punch_face_setup(uint8_t watch_face_index, void **context_ptr);

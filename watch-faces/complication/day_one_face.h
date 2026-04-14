@@ -62,6 +62,7 @@ typedef enum {
     DAY_ONE_PAGE_YEARS_SINCE,   // years since birth
     DAY_ONE_PAGE_YEARS_LEFT,    // years until birth_year+83
     DAY_ONE_PAGE_MONTHS_LEFT,   // months until birth_year+83
+    DAY_ONE_PAGE_END_DATE,      // show the calculated end date (birth_year+83, same month/day)
 } day_one_page_t;
 
 typedef struct {
