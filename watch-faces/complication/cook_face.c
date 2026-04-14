@@ -40,18 +40,20 @@ typedef struct {
     const char top_classic[4];  /* 3 chars + NUL, fallback for classic LCD */
     uint16_t   oven_f;          /* oven temp °F                            */
     uint16_t   internal_f;      /* internal target °F  (0 = N/A)           */
+    uint8_t    beef_rank;       /* 1–5 for beef doneness levels, 0 = not beef */
 } cook_item_t;
 
 static const cook_item_t ITEMS[] = {
-    { "bF r ", "bFr",  450, 120 },   /* beef rare        */
-    { "bFmr ", "mr ",  450, 135 },   /* beef med-rare    */
-    { "bF m ", "bFm",  375, 145 },   /* beef medium      */
-    { "bFwl ", "bFw",  375, 160 },   /* beef well        */
-    { "LAMb ", "LAM",  425, 145 },   /* lamb             */
-    { "POrk ", "PRk",  400, 145 },   /* pork             */
-    { "CHkn ", "CHk",  400, 165 },   /* chicken          */
-    { "FISH ", "FSH",  350, 145 },   /* fish             */
-    { "VEG  ", "VEG",  425,   0 },   /* roasted veg      */
+    { "bF 1 ", "bF1",  450, 120, 1 },   /* beef rare        */
+    { "bF 2 ", "bF2",  450, 135, 2 },   /* beef med-rare    */
+    { "bF 3 ", "bF3",  375, 145, 3 },   /* beef medium      */
+    { "bF 4 ", "bF4",  375, 155, 4 },   /* beef med-well    */
+    { "bF 5 ", "bF5",  375, 160, 5 },   /* beef well-done   */
+    { "LAMb ", "LAM",  425, 145, 0 },   /* lamb             */
+    { "POrk ", "PRk",  400, 145, 0 },   /* pork             */
+    { "CHkn ", "CHk",  400, 165, 0 },   /* chicken          */
+    { "FISH ", "FSH",  350, 145, 0 },   /* fish             */
+    { "VEG  ", "VEG",  425,   0, 0 },   /* roasted veg      */
 };
 
 #define COOK_NUM_ITEMS ((uint8_t)(sizeof(ITEMS) / sizeof(ITEMS[0])))
@@ -59,8 +61,17 @@ static const cook_item_t ITEMS[] = {
 static void _cook_display(cook_face_state_t *state) {
     const cook_item_t *item = &ITEMS[state->item_idx];
 
-    /* Top row: food label */
-    watch_display_text_with_fallback(WATCH_POSITION_TOP, item->top_custom, item->top_classic);
+    /* Top row: food label.
+     * Beef items use split positions so the rank digit renders on classic LCD
+     * (TOP_LEFT="bF", TOP_RIGHT=" N"). Other items use the normal fallback. */
+    if (item->beef_rank > 0) {
+        char rank[3];
+        watch_display_text(WATCH_POSITION_TOP_LEFT, "bF");
+        snprintf(rank, sizeof(rank), " %u", item->beef_rank);
+        watch_display_text(WATCH_POSITION_TOP_RIGHT, rank);
+    } else {
+        watch_display_text_with_fallback(WATCH_POSITION_TOP, item->top_custom, item->top_classic);
+    }
 
     /* Bottom row: right-aligned 3-digit temp, space, mode letter (H=oven, T=target) */
     char bot[9];

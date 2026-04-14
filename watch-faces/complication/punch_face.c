@@ -41,8 +41,16 @@ static const int8_t _punch_countdown_seq[] = {
     0
 };
 
-// Glitchy animation sound: rapid staccato at erratic pitches
+// Glitchy animation sound played twice for ~0.75 s of erratic staccato.
 static const int8_t _punch_glitch_seq[] = {
+    BUZZER_NOTE_C6,  2, BUZZER_NOTE_REST, 1,
+    BUZZER_NOTE_A3,  2, BUZZER_NOTE_REST, 1,
+    BUZZER_NOTE_G5,  2, BUZZER_NOTE_REST, 1,
+    BUZZER_NOTE_D3,  2, BUZZER_NOTE_REST, 1,
+    BUZZER_NOTE_E6,  2, BUZZER_NOTE_REST, 1,
+    BUZZER_NOTE_B4,  2, BUZZER_NOTE_REST, 1,
+    BUZZER_NOTE_F3,  2, BUZZER_NOTE_REST, 1,
+    BUZZER_NOTE_C7,  2, BUZZER_NOTE_REST, 1,
     BUZZER_NOTE_C6,  2, BUZZER_NOTE_REST, 1,
     BUZZER_NOTE_A3,  2, BUZZER_NOTE_REST, 1,
     BUZZER_NOTE_G5,  2, BUZZER_NOTE_REST, 1,
@@ -136,17 +144,35 @@ static uint16_t _punch_rng(punch_state_t *state) {
     return state->rng;
 }
 
-// Push a new score into the circular history, shifting old entries down.
+// Insert score into history sorted descending (best first). Keeps top PUNCH_HISTORY_SIZE scores.
 static void _punch_record_score(punch_state_t *state, uint16_t score) {
-    uint8_t n = (state->history_count < PUNCH_HISTORY_SIZE)
-                ? state->history_count : PUNCH_HISTORY_SIZE - 1;
-    for (int8_t i = (int8_t)n; i > 0; i--)
+    uint8_t n = state->history_count;
+    // Find insertion point
+    uint8_t ins = n < PUNCH_HISTORY_SIZE ? n : PUNCH_HISTORY_SIZE;
+    for (uint8_t i = 0; i < (n < PUNCH_HISTORY_SIZE ? n : PUNCH_HISTORY_SIZE); i++) {
+        if (score > state->history[i]) { ins = i; break; }
+    }
+    // If buffer full and score doesn't beat last entry, bail
+    if (n >= PUNCH_HISTORY_SIZE && ins >= PUNCH_HISTORY_SIZE) return;
+    // Shift right (drop last if full)
+    uint8_t limit = n < PUNCH_HISTORY_SIZE ? n : PUNCH_HISTORY_SIZE - 1;
+    for (int8_t i = (int8_t)limit; i > (int8_t)ins; i--)
         state->history[i] = state->history[i - 1];
-    state->history[0] = score;
+    state->history[ins] = score;
     if (state->history_count < PUNCH_HISTORY_SIZE) state->history_count++;
 }
 
 // ─── Display ─────────────────────────────────────────────────────────────────
+
+// Write a 0–1000 score into the 4 large HHMM digits.
+static void _punch_show_score(uint16_t score) {
+    char buf[3];
+    snprintf(buf, sizeof(buf), "%2u", score / 100);
+    watch_display_text(WATCH_POSITION_HOURS, buf);
+    snprintf(buf, sizeof(buf), "%02u", score % 100);
+    watch_display_text(WATCH_POSITION_MINUTES, buf);
+    watch_display_text(WATCH_POSITION_SECONDS, "  ");
+}
 
 static void _punch_update_display(punch_state_t *state) {
     char buf[7];
@@ -154,7 +180,9 @@ static void _punch_update_display(punch_state_t *state) {
     switch (state->mode) {
         case PUNCH_MODE_IDLE:
             watch_display_text_with_fallback(WATCH_POSITION_TOP, "PUnCH", "PU");
-            watch_display_text(WATCH_POSITION_BOTTOM, "rEAdY ");
+            watch_display_text(WATCH_POSITION_HOURS, "rE");
+            watch_display_text(WATCH_POSITION_MINUTES, "Ad");
+            watch_display_text(WATCH_POSITION_SECONDS, "  ");
             watch_clear_colon();
             break;
 
@@ -162,15 +190,19 @@ static void _punch_update_display(punch_state_t *state) {
             watch_display_text_with_fallback(WATCH_POSITION_TOP, "PUnCH", "PU");
             uint8_t n = (uint8_t)(5 - state->tick_count);
             if (n == 0) n = 1;
-            snprintf(buf, sizeof(buf), "  %u   ", n);
-            watch_display_text(WATCH_POSITION_BOTTOM, buf);
+            watch_display_text(WATCH_POSITION_HOURS, "  ");
+            snprintf(buf, sizeof(buf), " %u", n);
+            watch_display_text(WATCH_POSITION_MINUTES, buf);
+            watch_display_text(WATCH_POSITION_SECONDS, "  ");
             watch_clear_colon();
             break;
         }
 
         case PUNCH_MODE_READY:
             watch_display_text_with_fallback(WATCH_POSITION_TOP, "PUnCH", "PU");
-            watch_display_text(WATCH_POSITION_BOTTOM, " HIt! ");
+            watch_display_text(WATCH_POSITION_HOURS, "HI");
+            watch_display_text(WATCH_POSITION_MINUTES, "t!");
+            watch_display_text(WATCH_POSITION_SECONDS, "  ");
             watch_clear_colon();
             break;
 
@@ -179,30 +211,29 @@ static void _punch_update_display(punch_state_t *state) {
             uint16_t rnd = _punch_rng(state);
 
             if (t < 8) {
-                // Glitch top row too in early frames (alternate between face label and garbage)
+                // Glitch: alternate top label, fully random bottom digits
                 if (t % 2 == 0)
                     watch_display_text_with_fallback(WATCH_POSITION_TOP, "PUnCH", "PU");
                 else
                     watch_display_text_with_fallback(WATCH_POSITION_TOP, "88888", "88");
-
-                // Bottom: fully random 4-digit number
-                snprintf(buf, sizeof(buf), "%04u  ", rnd % 10000);
-
+                uint16_t rv = rnd % 10000;
+                snprintf(buf, sizeof(buf), "%2u", rv / 100);
+                watch_display_text(WATCH_POSITION_HOURS, buf);
+                snprintf(buf, sizeof(buf), "%02u", rv % 100);
+                watch_display_text(WATCH_POSITION_MINUTES, buf);
             } else if (t < 12) {
-                // Top settles back to label
+                // Settling: top label stable, HOURS still glitching, MINUTES locked to score
                 watch_display_text_with_fallback(WATCH_POSITION_TOP, "PUnCH", "PU");
-                // Bottom: last 2 digits correct, first 2 still glitching
-                uint16_t prefix = _punch_rng(state) % 100;
-                uint16_t suffix = state->score % 100;
-                snprintf(buf, sizeof(buf), "%02u%02u  ", prefix, suffix);
-
+                snprintf(buf, sizeof(buf), "%2u", (uint16_t)(_punch_rng(state) % 100));
+                watch_display_text(WATCH_POSITION_HOURS, buf);
+                snprintf(buf, sizeof(buf), "%02u", state->score % 100);
+                watch_display_text(WATCH_POSITION_MINUTES, buf);
             } else {
-                // Top settled, bottom: full score (slot machine stopped)
+                // Locked: full score
                 watch_display_text_with_fallback(WATCH_POSITION_TOP, "PUnCH", "PU");
-                snprintf(buf, sizeof(buf), "%4u  ", state->score);
+                _punch_show_score(state->score);
             }
-
-            watch_display_text(WATCH_POSITION_BOTTOM, buf);
+            watch_display_text(WATCH_POSITION_SECONDS, "  ");
             watch_clear_colon();
             break;
         }
@@ -210,17 +241,19 @@ static void _punch_update_display(punch_state_t *state) {
         case PUNCH_MODE_SCORE: {
             uint16_t disp_score;
             if (state->view_idx == 0) {
+                // Current round — clear top-right in case rank digit is lingering
                 watch_display_text_with_fallback(WATCH_POSITION_TOP, "PUnCH", "PU");
-                disp_score = state->history[0];
+                watch_display_text(WATCH_POSITION_TOP_RIGHT, "  ");
+                disp_score = state->score;
             } else {
-                // Show history index in top
-                snprintf(buf, sizeof(buf), "H%u", state->view_idx);
-                watch_display_text_with_fallback(WATCH_POSITION_TOP, buf, buf);
-                disp_score = (state->view_idx < state->history_count)
-                             ? state->history[state->view_idx] : 0;
+                // Ranked history: "SC" top-left, " N" top-right
+                watch_display_text(WATCH_POSITION_TOP_LEFT, "SC");
+                snprintf(buf, sizeof(buf), " %u", state->view_idx);
+                watch_display_text(WATCH_POSITION_TOP_RIGHT, buf);
+                disp_score = (state->view_idx <= state->history_count)
+                             ? state->history[state->view_idx - 1] : 0;
             }
-            snprintf(buf, sizeof(buf), "%4u  ", disp_score);
-            watch_display_text(WATCH_POSITION_BOTTOM, buf);
+            _punch_show_score(disp_score);
             watch_clear_colon();
             break;
         }
@@ -266,17 +299,19 @@ bool punch_face_loop(movement_event_t event, void *context) {
                     state->tick_count++;
                     if (state->tick_count >= PUNCH_COUNTDOWN_TICKS) {
                         // Open the punch window
-                        state->mode          = PUNCH_MODE_READY;
-                        state->tick_count    = 0;
-                        state->baseline_mag2 = 0;
-                        state->peak_mag2     = 0;
+                        state->mode            = PUNCH_MODE_READY;
+                        state->tick_count      = 0;
+                        state->baseline_mag2   = 0;
+                        state->peak_mag2       = 0;
+                        state->impact_detected = false;
+                        state->post_peak_ticks = 0;
                         movement_request_tick_frequency(16);
                     }
                     _punch_update_display(state);
                     break;
 
                 case PUNCH_MODE_READY: {
-                    // Sample accelerometer each tick (16 Hz → 1 second window)
+                    // Sample accelerometer each tick (16 Hz)
                     if (!state->no_sensor) {
                         lis2dw_reading_t r = lis2dw_get_raw_reading();
                         int64_t x = (int64_t)r.x;
@@ -285,33 +320,46 @@ bool punch_face_loop(movement_event_t event, void *context) {
                         int64_t mag2 = x*x + y*y + z*z;
 
                         if (state->tick_count == 0) {
-                            // First sample establishes baseline (arm at rest)
+                            // First sample: arm at rest — establish baseline
                             state->baseline_mag2 = mag2;
                             state->peak_mag2     = mag2;
                         } else if (mag2 > state->peak_mag2) {
-                            state->peak_mag2 = mag2;
+                            state->peak_mag2       = mag2;
+                            state->post_peak_ticks = 0;
+                            // Onset: spike > 20% of full-scale impact
+                            if ((state->peak_mag2 - state->baseline_mag2) >
+                                (int64_t)(PUNCH_SCALE_FACTOR / 5)) {
+                                state->impact_detected = true;
+                            }
+                        } else if (state->impact_detected) {
+                            state->post_peak_ticks++;
                         }
                     }
 
                     state->tick_count++;
 
-                    if (state->tick_count >= PUNCH_MEASURE_TICKS) {
+                    // Exit: timeout OR one-shot (peak detected + 4 decay ticks)
+                    bool done = (state->tick_count >= PUNCH_MEASURE_TICKS) ||
+                                (state->impact_detected && state->post_peak_ticks >= 4);
+
+                    if (done) {
                         // ── Compute score ──
                         uint16_t score;
                         if (!state->no_sensor) {
                             int64_t impact = state->peak_mag2 - state->baseline_mag2;
                             if (impact < 0) impact = 0;
-                            uint64_t sc = (uint64_t)((impact >= (int64_t)(PUNCH_SCALE_FACTOR * 1000ULL))
+                            uint64_t sc = (impact >= (int64_t)(PUNCH_SCALE_FACTOR))
                                           ? 1000ULL
-                                          : (uint64_t)(impact * 1000ULL / PUNCH_SCALE_FACTOR));
+                                          : (uint64_t)(impact * 1000ULL / PUNCH_SCALE_FACTOR);
                             score = (uint16_t)sc;
                         } else {
-                            // No hardware sensor: give a fun random score for simulator use
+                            // No hardware sensor: fun random score for simulator
                             uint16_t r1 = _punch_rng(state);
                             uint16_t r2 = _punch_rng(state);
                             score = (uint16_t)(((uint32_t)r1 * r2) % 1001);
                         }
 
+                        state->score = score;
                         _punch_record_score(state, score);
 
                         // ── Start animation ──
@@ -345,7 +393,8 @@ bool punch_face_loop(movement_event_t event, void *context) {
 
         case EVENT_ALARM_BUTTON_UP:
             if (state->mode == PUNCH_MODE_SCORE && state->history_count > 0) {
-                state->view_idx = (state->view_idx + 1) % state->history_count;
+                // Cycle 0 (current) → 1..history_count (ranked best-first) → 0
+                state->view_idx = (state->view_idx + 1) % (state->history_count + 1);
                 _punch_update_display(state);
             }
             break;
@@ -356,7 +405,7 @@ bool punch_face_loop(movement_event_t event, void *context) {
         case EVENT_LIGHT_BUTTON_UP:
             if (state->mode == PUNCH_MODE_SCORE && state->history_count > 0) {
                 state->view_idx = (state->view_idx == 0)
-                                  ? (state->history_count - 1)
+                                  ? state->history_count
                                   : (state->view_idx - 1);
                 _punch_update_display(state);
             }
