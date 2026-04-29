@@ -52,7 +52,7 @@ static const cook_item_t ITEMS[] = {
     { "LAMb ", "LAM",  425, 145, 0 },   /* lamb             */
     { "POrk ", "PRk",  400, 145, 0 },   /* pork             */
     { "CHkn ", "CHk",  400, 165, 0 },   /* chicken          */
-    { "FISH ", "FSH",  350, 145, 0 },   /* fish             */
+    { "FH   ", "FH",   350, 145, 0 },   /* fish             */
     { "VEG  ", "VEG",  425,   0, 0 },   /* roasted veg      */
 };
 
@@ -70,6 +70,7 @@ static void _cook_display(cook_face_state_t *state) {
         snprintf(rank, sizeof(rank), " %u", item->beef_rank);
         watch_display_text(WATCH_POSITION_TOP_RIGHT, rank);
     } else {
+        watch_display_text(WATCH_POSITION_TOP_RIGHT, "  "); // clear any lingering beef rank digit
         watch_display_text_with_fallback(WATCH_POSITION_TOP, item->top_custom, item->top_classic);
     }
 

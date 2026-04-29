@@ -71,6 +71,7 @@ typedef struct {
     uint8_t watch_face_index;
     uint8_t preset_idx;        // index into _scd_presets[]
     uint8_t tune_idx;          // index into _scd_tunes[]
+    uint8_t fire_count;        // times timer has fired this run (0-31); shown in date position
     bool repeat;
     scd_mode_t mode;
     uint32_t target_ts;        // unix time when timer fires

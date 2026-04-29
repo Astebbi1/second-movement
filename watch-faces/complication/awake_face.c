@@ -195,9 +195,13 @@ static void _do_poll(awake_state_t *state) {
                            ? (now - state->off_wrist_start_epoch) : 0;
         if (off_dur > 0)
             state->last_off_wrist_seconds = off_dur;
-        state->wear_session_start = now;  // new wear session begins
+        state->wear_session_start = now;  // always start a fresh wear session
         state->mode               = AWAKE_STATE_AWAKE;
-        state->wake_epoch         = now;
+        // Only reset the "time awake" clock if we were off-wrist long enough to
+        // suggest sleep without the watch (> 1 hour).  Short absences (run,
+        // shower, charging) should NOT reset how long we've been awake.
+        if (off_dur > 3600UL)
+            state->wake_epoch = now;
         state->still_poll_count   = 0;
         // Don't update wrist temp yet — let the sensor stabilise on-wrist
         return;
@@ -307,11 +311,26 @@ bool awake_face_loop(movement_event_t event, void *context) {
             break;
 
         case EVENT_ALARM_LONG_PRESS:
-            // Manual "I just woke up" — corrects algorithm drift without clearing other stats
-            state->mode             = AWAKE_STATE_AWAKE;
-            state->wake_epoch       = _now_epoch();
-            state->still_poll_count = 0;
-            state->page             = 0;
+            if (state->page == 4) {
+                // Full hard reset from the LG page — clears everything and starts fresh
+                uint32_t now_r = _now_epoch();
+                memset(state, 0, sizeof(awake_state_t));
+                state->mode               = AWAKE_STATE_AWAKE;
+                state->wake_epoch         = now_r;
+                state->wear_session_start = now_r;
+                state->page               = 0;
+                int16_t t = _read_temp_tenths();
+                if (t != INT16_MIN) {
+                    state->wrist_temp_avg     = t;
+                    state->wrist_temp_samples = 1;
+                }
+            } else {
+                // Manual "I just woke up" — corrects algorithm drift without clearing other stats
+                state->mode             = AWAKE_STATE_AWAKE;
+                state->wake_epoch       = _now_epoch();
+                state->still_poll_count = 0;
+                state->page             = 0;
+            }
             _awake_update_display(state);
             break;
 

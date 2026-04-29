@@ -54,7 +54,7 @@
 // Score 1000 maps to this raw impact magnitude² delta.
 // Tune up to make scoring harder, down to make it easier.
 // At FS=±2g LP mode: 1g ≈ 2048 LSB. A 6g punch on a single axis ≈ 150,994,944.
-#define PUNCH_SCALE_FACTOR    150994944ULL
+#define PUNCH_SCALE_FACTOR    1000000000ULL
 
 // State timing (tick counts per state)
 #define PUNCH_COUNTDOWN_TICKS 5   // at 1 Hz  = 5 full seconds (5 / 4 / 3 / 2 / 1)

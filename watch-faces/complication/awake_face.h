@@ -51,7 +51,8 @@
  *   No display takeover — the face just tracks duration silently.
  *   The Wr page freezes at the last on-wrist duration; the oF page counts up.
  *
- * ALARM long-press: manual "I just woke up" reset (fixes algorithm drift)
+ * ALARM long-press (any page): manual "I just woke up" — corrects drift
+ * ALARM long-press on LG page:  full hard reset — clears all stats
  * LIGHT long-press: illuminate LED
  */
 

@@ -58,7 +58,10 @@ static void _start(timer_state_t *state, bool with_beep) {
     state->mode = running;
     movement_schedule_background_task_for_face(state->watch_face_index, target_dt);
     watch_set_indicator(WATCH_INDICATOR_BELL);
-    if (with_beep) watch_buzzer_play_sequence((int8_t *)_sound_seq_start, NULL);
+    if (with_beep) {
+        state->fire_count = 0;  /* fresh start resets the fire counter */
+        watch_buzzer_play_sequence((int8_t *)_sound_seq_start, NULL);
+    }
 }
 
 static void _draw(timer_state_t *state, uint8_t subsecond) {
@@ -110,7 +113,12 @@ static void _draw(timer_state_t *state, uint8_t subsecond) {
             break;
     }
 
-    sprintf(timer_id, "%2u", state->current_timer + 1);
+    /* Show fire count in date position while running/pausing; slot number otherwise */
+    if (state->mode == running || state->mode == pausing) {
+        sprintf(timer_id, "%2u", state->fire_count);
+    } else {
+        sprintf(timer_id, "%2u", state->current_timer + 1);
+    }
     if (state->mode == setting && subsecond % 2) {
         // blink the current settings value
         if (state->settings_state == 0) timer_id[0] = timer_id[1] = ' ';
@@ -303,6 +311,7 @@ bool timer_face_loop(movement_event_t event, void *context) {
             // play the alarm
             _beeps_to_play = 4;
             watch_buzzer_play_sequence((int8_t *)_sound_seq_beep, _signal_callback);
+            state->fire_count = (state->fire_count < 31) ? state->fire_count + 1 : 31;
             _reset(state);
             if (state->timers[state->current_timer].unit.repeat) _start(state, false);
             break;
@@ -329,6 +338,7 @@ bool timer_face_loop(movement_event_t event, void *context) {
                 case pausing:
                 case running:
                     _reset(state);
+                    state->fire_count = 0;  /* manual abort clears the counter */
                     if (movement_button_should_sound()) watch_buzzer_play_note(BUZZER_NOTE_C7, 50);
                     break;
                 default:

@@ -120,7 +120,11 @@ static void _scd_draw(scd_state_t *state) {
     // the 2-letter tune abbr in the seconds position flags it as a timer not a clock.
     sprintf(buf, "%02d%02d%s", mins, secs, _scd_tunes[state->tune_idx].abbr);
     watch_set_colon();
-    watch_display_text_with_fallback(WATCH_POSITION_TOP, "TIMER", "ti");
+    // Top-left: face label; top-right (date position): fire count 0–31.
+    watch_display_text_with_fallback(WATCH_POSITION_TOP_LEFT, "TiMr", "Ti");
+    char fcbuf[3];
+    sprintf(fcbuf, "%2u", state->fire_count);
+    watch_display_text(WATCH_POSITION_TOP_RIGHT, fcbuf);
     watch_display_text(WATCH_POSITION_BOTTOM, buf);
 
     // LAP = repeat on; BELL = timer running
@@ -196,13 +200,15 @@ bool stebbs_countdown_face_loop(movement_event_t event, void *context) {
         case EVENT_ALARM_LONG_PRESS:
             switch (state->mode) {
                 case SCD_IDLE:
-                    // Start the selected preset
+                    // Fresh start — reset fire count then schedule
+                    state->fire_count = 0;
                     _scd_schedule(state, _scd_presets[state->preset_idx]);
                     break;
                 case SCD_RUNNING:
                 case SCD_PAUSED:
-                    // Stop and return to idle
+                    // Manual abort — reset fire count and return to idle
                     _scd_reset(state);
+                    state->fire_count = 0;
                     break;
             }
             _scd_draw(state);
@@ -236,7 +242,8 @@ bool stebbs_countdown_face_loop(movement_event_t event, void *context) {
             break;
 
         case EVENT_BACKGROUND_TASK:
-            // Timer fired.
+            // Timer fired — increment the fire counter (capped at 31), then play tune.
+            state->fire_count = (state->fire_count < 31) ? state->fire_count + 1 : 31;
             _scd_play_tune(state);
             if (state->repeat) {
                 // Immediately restart with the same preset
